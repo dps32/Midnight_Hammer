@@ -243,6 +243,114 @@
       "tileHeight": 15,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
+    },
+    {
+      "name": "MP5_2",
+      "fileName": "media/MP5_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 512,
+      "tileHeight": 512,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "assault_rifle_2",
+      "fileName": "media/assault_rifle_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 32,
+      "tileHeight": 12,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "grenades_by_mtk_2",
+      "fileName": "media/grenades_by_mtk_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 128,
+      "tileHeight": 64,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "dron2d_2",
+      "fileName": "media/dron2d_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 626,
+      "tileHeight": 626,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "ak47_2",
+      "fileName": "media/ak47_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 250,
+      "tileHeight": 120,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "awp_2",
+      "fileName": "media/awp_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 2560,
+      "tileHeight": 640,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "glock_2",
+      "fileName": "media/glock_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 200,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "grenade launcher beige_2",
+      "fileName": "media/grenade launcher beige_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 42,
+      "tileHeight": 19,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "smg_2",
+      "fileName": "media/smg_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 34,
+      "tileHeight": 15,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "shotgun_2",
+      "fileName": "media/shotgun_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 39,
+      "tileHeight": 10,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "soldier_2",
+      "fileName": "media/soldier_2.png",
+      "mediaType": "atlas",
+      "tileWidth": 250,
+      "tileHeight": 250,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "rpg_2",
+      "fileName": "media/rpg_2.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 39,
+      "tileHeight": 16,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
     }
   ],
   "mediaGroups": [
