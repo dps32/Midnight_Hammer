@@ -166,7 +166,12 @@ const DIRECTIONS = {
 const LEVEL = loadMultiplayerLevel();
 
 class GameLogic {
-        constructor() {
+        constructor(options = {}) {
+                const parsedBotCount = Number(options.localBotCount);
+                this.localBotCount = Number.isFinite(parsedBotCount)
+                        ? Math.max(0, Math.floor(parsedBotCount))
+                        : 0;
+
                 this.players = new Map();
                 this.tickCounter = 0;
                 this.nextJoinOrder = 0;
@@ -189,6 +194,34 @@ class GameLogic {
                 this.wallZones = this.buildWallZones();
                 this.spawnCells = this.buildSpawnCells();
                 this.storm = this.createInitialStorm();
+
+                if (this.localBotCount > 0) {
+                        this.addLocalBots(this.localBotCount);
+                }
+        }
+
+        addLocalBots(count) {
+                const totalBots = Math.max(0, Math.floor(Number(count) || 0));
+                const now = Date.now();
+                for (let i = 0; i < totalBots; i++) {
+                        const id = `BOT_${String(i + 1).padStart(2, '0')}`;
+                        if (this.players.has(id)) {
+                                continue;
+                        }
+                        const bot = this.createPlayer(id);
+                        bot.name = `Bot ${i + 1}`;
+                        bot.alive = false;
+                        bot.spectator = false;
+                        bot.health = PLAYER_MAX_HEALTH;
+                        this.players.set(id, bot);
+                }
+                if (totalBots > 0) {
+                        this.initialStateDirty = true;
+                        if (this.phase === 'waiting') {
+                                this.refreshWaitingCountdown(now);
+                        }
+                        this.refreshSpectatorTargets();
+                }
         }
 
         addClient(id) {

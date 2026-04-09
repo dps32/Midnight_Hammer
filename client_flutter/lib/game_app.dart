@@ -14,6 +14,7 @@ class GameApp extends Game {
     static const int multiplayerLevelIndex = 0;
 
     final NetworkConfig networkConfig;
+    final bool connectNetwork;
     final AppData appData;
     final AssetManager assetManager = AssetManager();
     final Array<String> levelNames = Array<String>();
@@ -33,8 +34,11 @@ class GameApp extends Game {
     ShapeRenderer? shapeRenderer;
     BitmapFont? font;
 
-    GameApp({required this.networkConfig})
-        : appData = AppData(initialConfig: networkConfig);
+    GameApp({required this.networkConfig, this.connectNetwork = true})
+        : appData = AppData(
+            initialConfig: networkConfig,
+            autoConnect: connectNetwork,
+        );
 
     Future<void> create() async {
         batch = SpriteBatch();

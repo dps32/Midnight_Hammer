@@ -4,10 +4,11 @@ import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import 'game_app.dart';
-import 'libgdx_compat/gdx.dart';
 import 'level_loader.dart';
+import 'libgdx_compat/gdx.dart';
 import 'network_config.dart';
 import 'play_screen.dart';
+import 'soldier_test_screen.dart';
 import 'window_config.dart';
 
 class MainApp {
@@ -29,10 +30,24 @@ class _GameRoot extends StatefulWidget {
 
 class _GameRootState extends State<_GameRoot> {
     NetworkConfig? _networkConfig;
+    bool _testSoldierMode = false;
 
     void _handleStartGame(NetworkConfig config) {
         setState(() {
             _networkConfig = config;
+            _testSoldierMode = false;
+        });
+    }
+
+    void _handleTestSoldier() {
+        setState(() {
+            _testSoldierMode = true;
+        });
+    }
+
+    void _handleBackFromTest() {
+        setState(() {
+            _testSoldierMode = false;
         });
     }
 
@@ -47,9 +62,14 @@ class _GameRootState extends State<_GameRoot> {
             ),
             home: Scaffold(
                 body: SafeArea(
-                    child: _networkConfig == null
-                            ? _ConfigurationScreen(onStart: _handleStartGame)
-                            : _GameView(networkConfig: _networkConfig!),
+                    child: _testSoldierMode
+                            ? _SoldierTestView(onBack: _handleBackFromTest)
+                            : (_networkConfig == null
+                                    ? _ConfigurationScreen(
+                                        onStart: _handleStartGame,
+                                        onTestSoldier: _handleTestSoldier,
+                                    )
+                                    : _GameView(networkConfig: _networkConfig!)),
                 ),
             ),
         );
@@ -67,8 +87,12 @@ class _GameView extends StatefulWidget {
 
 class _ConfigurationScreen extends StatefulWidget {
     final ValueChanged<NetworkConfig> onStart;
+    final VoidCallback onTestSoldier;
 
-    const _ConfigurationScreen({required this.onStart});
+    const _ConfigurationScreen({
+        required this.onStart,
+        required this.onTestSoldier,
+    });
 
     @override
     State<_ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -173,6 +197,12 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
                                     ElevatedButton(
                                         onPressed: _startGame,
                                         child: const Text('Start Match'),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    OutlinedButton.icon(
+                                        onPressed: widget.onTestSoldier,
+                                        icon: const Icon(Icons.bug_report),
+                                        label: const Text('Campo de Batalla'),
                                     ),
                                 ],
                             ),
@@ -427,6 +457,183 @@ class _GameViewState extends State<_GameView>
             ),
         );
     }
+}
+
+class _SoldierTestView extends StatefulWidget {
+    final VoidCallback onBack;
+
+    const _SoldierTestView({required this.onBack});
+
+    @override
+    State<_SoldierTestView> createState() => _SoldierTestViewState();
+}
+
+class _SoldierTestViewState extends State<_SoldierTestView>
+        with SingleTickerProviderStateMixin {
+    final FocusNode _focusNode = FocusNode();
+    final ValueNotifier<int> _frameTick = ValueNotifier<int>(0);
+    late final GameApp _game;
+    late final SoldierTestScreen _testScreen;
+
+    Ticker? _ticker;
+    Duration? _lastTick;
+    double _delta = 1 / 60;
+    bool _ready = false;
+    int _lastGameWidth = -1;
+    int _lastGameHeight = -1;
+
+    @override
+    void initState() {
+        super.initState();
+        _initialize();
+    }
+
+    Future<void> _initialize() async {
+        try {
+            // Initialize level loader
+            await LevelLoader.initialize();
+
+            // Create a minimal offline GameApp for testing soldier movement.
+            _game = GameApp(
+                networkConfig: NetworkConfig.defaults,
+                connectNetwork: false,
+            );
+            await _game.create();
+
+            // Prioritize just the soldier texture for immediate visual feedback.
+            _game.getAssetManager().load('levels/media/soldier_2.png', Texture);
+
+            // Create test screen
+            _testScreen = SoldierTestScreen(_game, 0);
+
+            _ticker = createTicker((Duration elapsed) {
+                if (_lastTick == null) {
+                    _lastTick = elapsed;
+                } else {
+                    final double dt =
+                            (elapsed - _lastTick!).inMicroseconds / 1000000.0;
+                    _delta = dt.isFinite && dt > 0 ? dt : (1 / 60);
+                    _lastTick = elapsed;
+                }
+                _frameTick.value = _frameTick.value + 1;
+            });
+            _ticker!.start();
+
+            if (mounted) {
+                setState(() {
+                    _ready = true;
+                });
+                _focusNode.requestFocus();
+            }
+        } catch (e) {
+            debugPrint('Error initializing soldier test: $e');
+            if (mounted) {
+                widget.onBack();
+            }
+        }
+    }
+
+    @override
+    void dispose() {
+        _ticker?.dispose();
+        _frameTick.dispose();
+        _focusNode.dispose();
+        _game.dispose();
+        super.dispose();
+    }
+
+    KeyEventResult _onKeyEvent(KeyEvent event) {
+        final int? keycode = logicalKeyToGdxKey(event.logicalKey);
+        if (keycode == null) {
+            return KeyEventResult.ignored;
+        }
+
+        if (event is KeyDownEvent) {
+            Gdx.input.onKeyDown(keycode);
+        } else if (event is KeyUpEvent) {
+            Gdx.input.onKeyUp(keycode);
+        }
+        return KeyEventResult.handled;
+    }
+
+    void _resizeGameIfNeeded(int width, int height) {
+        if (_lastGameWidth == width && _lastGameHeight == height) {
+            return;
+        }
+
+        _lastGameWidth = width;
+        _lastGameHeight = height;
+        _testScreen.resize(width, height);
+    }
+
+    @override
+    Widget build(BuildContext context) {
+        return KeyboardListener(
+            focusNode: _focusNode,
+            onKeyEvent: _onKeyEvent,
+            child: Scaffold(
+                appBar: AppBar(
+                    title: const Text('Campo de Batalla'),
+                    leading: IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: widget.onBack,
+                    ),
+                    centerTitle: true,
+                ),
+                body: _ready
+                        ? ValueListenableBuilder<int>(
+                            valueListenable: _frameTick,
+                            builder: (BuildContext context, int tick, Widget? _) {
+                                return MouseRegion(
+                                    onEnter: (_) => _focusNode.requestFocus(),
+                                    child: CustomPaint(
+                                        painter: _SoldierTestPainter(this),
+                                        size: Size.infinite,
+                                    ),
+                                );
+                            },
+                        )
+                        : const Center(
+                            child: SizedBox(
+                                width: 50,
+                                height: 50,
+                                child: CircularProgressIndicator(),
+                            ),
+                        ),
+            ),
+        );
+    }
+
+    void paintFrame(Canvas canvas, Size size) {
+        if (size == Size.zero) {
+            return;
+        }
+
+        final int gameWidth = math.max(1, size.width.round());
+        final int gameHeight = math.max(1, size.height.round());
+
+        _resizeGameIfNeeded(gameWidth, gameHeight);
+
+        // Draw the test screen
+        Gdx.graphics.beginFrame(canvas, gameWidth, gameHeight, _delta);
+        _testScreen.render(_delta);
+        Gdx.graphics.endFrame();
+        Gdx.input.endFrame();
+    }
+}
+
+class _SoldierTestPainter extends CustomPainter {
+    final _SoldierTestViewState state;
+
+    _SoldierTestPainter(this.state) : super(repaint: state._frameTick);
+
+    @override
+    void paint(Canvas canvas, Size size) {
+        state.paintFrame(canvas, size);
+    }
+
+    @override
+    bool shouldRepaint(covariant _SoldierTestPainter oldDelegate) => true;
 }
 
 class _GamePainter extends CustomPainter {

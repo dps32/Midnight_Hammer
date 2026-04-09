@@ -1459,83 +1459,252 @@
       "fps": 12.5,
       "loop": true,
       "groupId": "__group_1773416516180721_0",
-      "anchorX": 0.496,
-      "anchorY": 0.5,
+      "anchorX": 0.37575757575757573,
+      "anchorY": 0.42042042042042044,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1773417101464908_0",
-          "name": "Hit Box 1",
+          "id": "__hb_1775663746256113_0",
+          "name": "Hit Box 2",
           "color": "green",
-          "x": 0.088,
+          "x": 0.06666666666666667,
           "y": 0.0,
-          "width": 0.816,
-          "height": 1.0
+          "width": 0.6181818181818182,
+          "height": 0.8408408408408409
         }
       ],
       "frameRigs": [
         {
           "frame": 0,
-          "anchorX": 0.496,
-          "anchorY": 0.5,
+          "anchorX": 0.37575757575757573,
+          "anchorY": 0.42042042042042044,
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1773417101464908_0",
-              "name": "Hit Box 1",
+              "id": "__hb_1775663746256113_0",
+              "name": "Hit Box 2",
               "color": "green",
-              "x": 0.088,
+              "x": 0.06666666666666667,
               "y": 0.0,
-              "width": 0.816,
-              "height": 1.0
+              "width": 0.6181818181818182,
+              "height": 0.8408408408408409
             }
           ]
         }
       ]
     },
     {
-      "id": "anim_1773416812930688",
-      "name": "soldier right",
+      "id": "anim_1773416849964663",
+      "name": "soldier up",
+      "mediaFile": "media/soldier_2.png",
+      "startFrame": 1,
+      "endFrame": 1,
+      "fps": 12.0,
+      "loop": true,
+      "groupId": "__group_1773416516180721_0",
+      "anchorX": 0.4909090909090909,
+      "anchorY": 0.42042042042042044,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1775659697403321_0",
+          "name": "Hit Box 1",
+          "color": "green",
+          "x": 0.19696969696969696,
+          "y": 0.0,
+          "width": 0.5878787878787879,
+          "height": 0.8408408408408409
+        }
+      ],
+      "frameRigs": [
+        {
+          "frame": 1,
+          "anchorX": 0.4909090909090909,
+          "anchorY": 0.42042042042042044,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1775659697403321_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.19696969696969696,
+              "y": 0.0,
+              "width": 0.5878787878787879,
+              "height": 0.8408408408408409
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anim_4",
+      "name": "soldier left",
       "mediaFile": "media/soldier_2.png",
       "startFrame": 6,
       "endFrame": 6,
       "fps": 12.0,
       "loop": true,
       "groupId": "__group_1773416516180721_0",
-      "anchorX": 0.5,
-      "anchorY": 0.5,
+      "anchorX": 0.37424242424242427,
+      "anchorY": 0.5810810810810811,
       "anchorColor": "red",
-      "hitBoxes": [],
+      "hitBoxes": [
+        {
+          "id": "__hb_1775659701053773_0",
+          "name": "Hit Box 1",
+          "color": "green",
+          "x": 0.06363636363636363,
+          "y": 0.16216216216216217,
+          "width": 0.6212121212121212,
+          "height": 0.8378378378378378
+        }
+      ],
       "frameRigs": [
         {
           "frame": 6,
-          "anchorX": 0.5,
-          "anchorY": 0.5,
+          "anchorX": 0.37424242424242427,
+          "anchorY": 0.5810810810810811,
           "anchorColor": "red",
-          "hitBoxes": []
+          "hitBoxes": [
+            {
+              "id": "__hb_1775659701053773_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.06363636363636363,
+              "y": 0.16216216216216217,
+              "width": 0.6212121212121212,
+              "height": 0.8378378378378378
+            }
+          ]
         }
       ]
     },
     {
-      "id": "anim_1773416849964663",
-      "name": "soldier left",
+      "id": "anim_5",
+      "name": "soldier right",
       "mediaFile": "media/soldier_2.png",
-      "startFrame": 0,
-      "endFrame": 0,
+      "startFrame": 4,
+      "endFrame": 4,
       "fps": 12.0,
       "loop": true,
       "groupId": "__group_1773416516180721_0",
-      "anchorX": 0.5,
+      "anchorX": 0.47424242424242424,
       "anchorY": 0.5,
       "anchorColor": "red",
-      "hitBoxes": [],
+      "hitBoxes": [
+        {
+          "id": "__hb_1775659704391192_0",
+          "name": "Hit Box 1",
+          "color": "green",
+          "x": 0.16363636363636364,
+          "y": 0.07207207207207207,
+          "width": 0.6212121212121212,
+          "height": 0.8558558558558559
+        }
+      ],
       "frameRigs": [
         {
-          "frame": 0,
-          "anchorX": 0.5,
+          "frame": 4,
+          "anchorX": 0.47424242424242424,
           "anchorY": 0.5,
           "anchorColor": "red",
-          "hitBoxes": []
+          "hitBoxes": [
+            {
+              "id": "__hb_1775659704391192_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.16363636363636364,
+              "y": 0.07207207207207207,
+              "width": 0.6212121212121212,
+              "height": 0.8558558558558559
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anim_6",
+      "name": "soldier left-down",
+      "mediaFile": "media/soldier_2.png",
+      "startFrame": 5,
+      "endFrame": 5,
+      "fps": 12.0,
+      "loop": true,
+      "groupId": "__group_1773416516180721_0",
+      "anchorX": 0.6318181818181818,
+      "anchorY": 0.5,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1775659707260637_0",
+          "name": "Hit Box 2",
+          "color": "green",
+          "x": 0.31212121212121213,
+          "y": 0.07207207207207207,
+          "width": 0.6393939393939394,
+          "height": 0.8558558558558559
+        }
+      ],
+      "frameRigs": [
+        {
+          "frame": 5,
+          "anchorX": 0.6318181818181818,
+          "anchorY": 0.5,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1775659707260637_0",
+              "name": "Hit Box 2",
+              "color": "green",
+              "x": 0.31212121212121213,
+              "y": 0.07207207207207207,
+              "width": 0.6393939393939394,
+              "height": 0.8558558558558559
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anim_7",
+      "name": "soldier right-down",
+      "mediaFile": "media/soldier_2.png",
+      "startFrame": 3,
+      "endFrame": 3,
+      "fps": 12.0,
+      "loop": true,
+      "groupId": "__group_1773416516180721_0",
+      "anchorX": 0.36666666666666664,
+      "anchorY": 0.5075075075075075,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1775659710357079_0",
+          "name": "Hit Box 2",
+          "color": "green",
+          "x": 0.048484848484848485,
+          "y": 0.08708708708708708,
+          "width": 0.6363636363636364,
+          "height": 0.8408408408408409
+        }
+      ],
+      "frameRigs": [
+        {
+          "frame": 3,
+          "anchorX": 0.36666666666666664,
+          "anchorY": 0.5075075075075075,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1775659710357079_0",
+              "name": "Hit Box 2",
+              "color": "green",
+              "x": 0.048484848484848485,
+              "y": 0.08708708708708708,
+              "width": 0.6363636363636364,
+              "height": 0.8408408408408409
+            }
+          ]
         }
       ]
     }

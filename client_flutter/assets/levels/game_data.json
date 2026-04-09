@@ -95,15 +95,15 @@
       ],
       "sprites": [
         {
-          "name": "Hero 0",
+          "name": "Player",
           "gameplayData": "",
-          "type": "Hero 0",
-          "animationId": "anim_1772099194341380",
+          "type": "Player",
+          "animationId": "anim_1773416599518464",
           "x": 32,
           "y": 32,
-          "width": 20,
-          "height": 20,
-          "imageFile": "media/16x16 Idle-Sheet.png",
+          "width": 330,
+          "height": 333,
+          "imageFile": "media/soldier_2.png",
           "flipX": false,
           "flipY": false,
           "depth": 0.0,
@@ -266,8 +266,8 @@
       "name": "grenades_by_mtk_2",
       "fileName": "media/grenades_by_mtk_2.png",
       "mediaType": "spritesheet",
-      "tileWidth": 128,
-      "tileHeight": 64,
+      "tileWidth": 47,
+      "tileHeight": 12,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
@@ -283,8 +283,8 @@
     {
       "name": "ak47_2",
       "fileName": "media/ak47_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 250,
+      "mediaType": "tileset",
+      "tileWidth": 200,
       "tileHeight": 120,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
@@ -301,9 +301,9 @@
     {
       "name": "glock_2",
       "fileName": "media/glock_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 200,
-      "tileHeight": 100,
+      "mediaType": "tileset",
+      "tileWidth": 49,
+      "tileHeight": 49,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
@@ -335,11 +335,11 @@
       "groupId": "__main__"
     },
     {
-      "name": "soldier_2",
+      "name": "Player",
       "fileName": "media/soldier_2.png",
       "mediaType": "atlas",
-      "tileWidth": 250,
-      "tileHeight": 250,
+      "tileWidth": 330,
+      "tileHeight": 333,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },

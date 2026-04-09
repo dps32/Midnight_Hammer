@@ -5,7 +5,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 enum ConnectionStatus { disconnected, disconnecting, connecting, connected }
 
 class WebSocketsHandler {
-    late Function _callback;
+    void Function(String message)? _callback;
     String host = "localhost";
     String port = "8888";
     String? socketId;
@@ -20,7 +20,7 @@ class WebSocketsHandler {
         bool useSecureSocket = false,
         void Function(dynamic error)? onError,
         void Function()? onDone,
-    }) async {
+    }) {
         _callback = callback;
         host = serverHost;
         port = serverPort.toString();
@@ -33,13 +33,31 @@ class WebSocketsHandler {
                 host: host,
                 port: serverPort,
             );
+
+            _socketClient?.sink.close();
             _socketClient = WebSocketChannel.connect(uri);
-            connectionStatus = ConnectionStatus.connected;
+
+            // Absorb async handshake failures so they do not bubble as unhandled.
+            _socketClient!.ready
+                    .then((_) {
+                        connectionStatus = ConnectionStatus.connected;
+                    })
+                    .catchError((Object error) {
+                        connectionStatus = ConnectionStatus.disconnected;
+                        onError?.call(error);
+                    });
 
             _socketClient!.stream.listen(
                 (message) {
-                    _handleMessage(message);
-                    _callback(message);
+                    try {
+                        final String text = message.toString();
+                        _handleMessage(text);
+                        _callback?.call(text);
+                    } catch (error) {
+                        if (kDebugMode) {
+                            print('Error processant event WebSocket: $error');
+                        }
+                    }
                 },
                 onError: (error) {
                     connectionStatus = ConnectionStatus.disconnected;
@@ -49,6 +67,7 @@ class WebSocketsHandler {
                     connectionStatus = ConnectionStatus.disconnected;
                     onDone?.call();
                 },
+                cancelOnError: true,
             );
         } catch (e) {
             connectionStatus = ConnectionStatus.disconnected;
@@ -84,6 +103,7 @@ class WebSocketsHandler {
     void disconnectFromServer() {
         connectionStatus = ConnectionStatus.disconnecting;
         _socketClient?.sink.close();
+        _socketClient = null;
         connectionStatus = ConnectionStatus.disconnected;
     }
 }

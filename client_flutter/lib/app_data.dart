@@ -350,6 +350,7 @@ class AirstrikeWarningState {
 
 class AppData extends ChangeNotifier {
     final WebSocketsHandler _wsHandler = WebSocketsHandler();
+    final bool _autoConnect;
     final int _maxReconnectAttempts = 5;
     final Duration _reconnectDelay = const Duration(seconds: 3);
     final Duration _inputKeepAlive = const Duration(milliseconds: 100);
@@ -393,10 +394,18 @@ class AppData extends ChangeNotifier {
     bool _lastFiring = false;
     DateTime _lastInputSentAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-    AppData({NetworkConfig initialConfig = NetworkConfig.defaults})
+    AppData({
+        NetworkConfig initialConfig = NetworkConfig.defaults,
+        bool autoConnect = true,
+    })
         : networkConfig = initialConfig,
-            playerName = initialConfig.playerName {
-        _connectToWebSocket();
+            playerName = initialConfig.playerName,
+            _autoConnect = autoConnect {
+        if (_autoConnect) {
+            _connectToWebSocket();
+        } else {
+            phase = MatchPhase.waiting;
+        }
     }
 
     MultiplayerPlayer? get localPlayer {
@@ -471,7 +480,9 @@ class AppData extends ChangeNotifier {
         _reconnectAttempts = 0;
         playerId = null;
         disconnect();
-        _connectToWebSocket();
+        if (_autoConnect) {
+            _connectToWebSocket();
+        }
     }
 
     void sendInput({
@@ -637,11 +648,54 @@ class AppData extends ChangeNotifier {
         worldWidth = (state['worldWidth'] as num? ?? worldWidth).toDouble();
         worldHeight = (state['worldHeight'] as num? ?? worldHeight).toDouble();
 
+        final List<dynamic> rawPlayers = state['players'] as List<dynamic>? ?? [];
+        if (rawPlayers.isNotEmpty) {
+            players = rawPlayers
+                    .whereType<Map>()
+                    .map((Map player) => _playerFromInitial(_mapFromDynamic(player)))
+                    .toList(growable: false);
+        }
+
         final List<dynamic> rawWalls = state['wallZones'] as List<dynamic>? ?? [];
         wallZones = rawWalls
                 .whereType<Map>()
                 .map((Map wall) => WallZoneState.fromJson(_mapFromDynamic(wall)))
                 .toList(growable: false);
+    }
+
+    MultiplayerPlayer _playerFromInitial(Map<String, dynamic> raw) {
+        final String id = (raw['id'] as String? ?? '').trim();
+        final String name = (raw['name'] as String? ?? 'Player').trim();
+        final int joinOrder = (raw['joinOrder'] as num? ?? 0).toInt();
+        final double width = (raw['width'] as num? ?? 20).toDouble();
+        final double height = (raw['height'] as num? ?? 20).toDouble();
+        return MultiplayerPlayer(
+            id: id,
+            name: name,
+            joinOrder: joinOrder,
+            x: 0,
+            y: 0,
+            width: width,
+            height: height,
+            move: 'none',
+            aimX: 0,
+            aimY: 0,
+            alive: false,
+            spectator: false,
+            spectatingId: '',
+            health: 0,
+            maxHealth: 400,
+            primaryWeapon: '',
+            ammoInMag: 0,
+            ammoCapacity: 0,
+            reloading: false,
+            reloadRemainingMs: 0,
+            pendingAirstrike: false,
+            activeDroneId: '',
+            kills: 0,
+            deaths: 0,
+            inventorySlots: const <InventorySlotState>[],
+        );
     }
 
     void _applyGameplayState(Map<String, dynamic> state) {

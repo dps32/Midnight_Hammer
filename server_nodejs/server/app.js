@@ -13,13 +13,14 @@ loadEnvFiles([
 
 const debug = process.env.DEBUG_WS === '1';
 const port = Number.parseInt(String(process.env.PORT || '3000').trim(), 10) || 3000;
+const localBotCount = Number.parseInt(String(process.env.LOCAL_BOT_COUNT || '0').trim(), 10) || 0;
 const adminPassword = String(process.env.WEB_ADMIN_PASSWORD || '').trim();
 const publicDir = path.resolve(__dirname, '..', 'public');
 const BROADCAST_INTERVAL_MS = 50; // 20Hz snapshots
 
 // Inicialitzar WebSockets i la lÃ²gica del joc
 const ws = new webSockets();
-const game = new GameLogic();
+const game = new GameLogic({ localBotCount });
 let gameLoop = new GameLoop();
 
 // Inicialitzar servidor Express
