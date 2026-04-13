@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'app_data.dart';
 import 'game_app.dart';
+import 'libgdx_compat/asset_manager.dart';
 import 'libgdx_compat/game_framework.dart';
 import 'libgdx_compat/gdx.dart';
 import 'libgdx_compat/gdx_collections.dart';
@@ -46,6 +47,25 @@ class PlayScreen extends ScreenAdapter {
     static final ui.Color airstrikeLocalPoint = colorValueOf('4CB1FF');
     static final ui.Color airstrikeEnemyPoint = colorValueOf('FF4747');
 
+    static const String playerSpritePath = 'levels/media/soldier.png';
+    static const String defaultWeaponSpritePath = 'levels/media/glock.png';
+    static const String droneSpritePath = 'levels/media/dron.png';
+    static const String airstrikeSpritePath = 'levels/media/f15.png';
+
+    static const Map<String, String> weaponSpriteById = <String, String>{
+        'pistol': 'levels/media/glock.png',
+        'smg': 'levels/media/smg.png',
+        'rifle': 'levels/media/rifle_asalto.png',
+        'sniper': 'levels/media/awp.png',
+        'rocket': 'levels/media/escopeta.png',
+    };
+
+    static const Map<String, String> consumableSpriteById = <String, String>{
+        'grenade': 'levels/media/glock.png',
+        'drone': 'levels/media/dron.png',
+        'airstrike': 'levels/media/f15.png',
+    };
+
     final GameApp game;
     final int levelIndex;
 
@@ -76,12 +96,14 @@ class PlayScreen extends ScreenAdapter {
             Gdx.graphics.getHeight().toDouble(),
             false,
         );
+        _queueGameplaySpriteAssets();
     }
 
     @override
     void render(double delta) {
         elapsedSeconds += math.max(0, math.min(delta, maxFrameSeconds));
         final AppData appData = game.getAppData();
+        game.getAssetManager().update();
 
         if (appData.phase == MatchPhase.waiting ||
                 appData.phase == MatchPhase.connecting) {
@@ -282,17 +304,18 @@ class PlayScreen extends ScreenAdapter {
     }
 
     void _renderWorldObjects(AppData appData) {
-        final ShapeRenderer shapes = game.getShapeRenderer();
+        final SpriteBatch batch = game.getBatch();
+        batch.begin();
+        _renderLoot(batch, appData.loot);
+        _renderProjectiles(batch, appData.projectiles);
+        _renderGrenades(batch, appData.grenades);
+        _renderDrones(batch, appData.drones);
+        _renderPlayers(batch, appData.players, appData.playerId);
+        _renderExplosions(batch, appData.explosions);
+        _renderAirstrikePlaceholders(batch, appData.airstrikeWarnings);
+        batch.end();
 
-        shapes.begin(ShapeType.filled);
-        _renderLoot(shapes, appData.loot);
-        _renderProjectiles(shapes, appData.projectiles);
-        _renderGrenades(shapes, appData.grenades);
-        _renderDrones(shapes, appData.drones);
-        _renderPlayers(shapes, appData.players, appData.playerId);
-        _renderExplosions(shapes, appData.explosions);
-        _renderAirstrikePlaceholders(shapes, appData.airstrikeWarnings);
-        shapes.end();
+        final ShapeRenderer shapes = game.getShapeRenderer();
 
         shapes.begin(ShapeType.line);
         _renderGrenadePreview(shapes, appData);
@@ -302,15 +325,19 @@ class PlayScreen extends ScreenAdapter {
     }
 
     void _renderPlayers(
-        ShapeRenderer shapes,
+        SpriteBatch batch,
         List<MultiplayerPlayer> players,
         String? localPlayerId,
     ) {
+        final TextureRegion? region = _fullTextureRegion(playerSpritePath);
+        if (region == null) {
+            return;
+        }
         for (final MultiplayerPlayer player in players) {
             if (!player.alive) {
                 continue;
             }
-            shapes.setColor(
+            batch.setColor(
                 player.id == localPlayerId ? playerLocalColor : playerEnemyColor,
             );
             final ui.Rect rect = viewport.worldToScreenRect(
@@ -319,13 +346,22 @@ class PlayScreen extends ScreenAdapter {
                 player.width,
                 player.height,
             );
-            shapes.rect(rect.left, rect.top, rect.width, rect.height);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
+            _drawPlayerWeapon(batch, player);
         }
     }
 
-    void _renderLoot(ShapeRenderer shapes, List<LootState> loot) {
+    void _renderLoot(SpriteBatch batch, List<LootState> loot) {
         for (final LootState item in loot) {
-            shapes.setColor(
+            final String spritePath = item.kind == 'weapon'
+                    ? (weaponSpriteById[item.weaponId] ?? defaultWeaponSpritePath)
+                    : (consumableSpriteById[item.consumableType] ?? defaultWeaponSpritePath);
+            final TextureRegion? region = _fullTextureRegion(spritePath);
+            if (region == null) {
+                continue;
+            }
+            batch.setColor(
                 item.kind == 'weapon' ? lootWeaponColor : lootConsumableColor,
             );
             final ui.Rect rect = viewport.worldToScreenRect(
@@ -334,63 +370,91 @@ class PlayScreen extends ScreenAdapter {
                 12,
                 12,
             );
-            shapes.rect(rect.left, rect.top, rect.width, rect.height);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
         }
     }
 
     void _renderProjectiles(
-        ShapeRenderer shapes,
+        SpriteBatch batch,
         List<ProjectileState> projectiles,
     ) {
         for (final ProjectileState projectile in projectiles) {
-            shapes.setColor(
-                projectile.kind == 'rocket' ? rocketColor : projectileColor,
+            final bool isRocket = projectile.kind == 'rocket';
+            final TextureRegion? region = _fullTextureRegion(
+                isRocket ? 'levels/media/escopeta.png' : defaultWeaponSpritePath,
             );
-            final ui.Offset center = viewport.worldToScreenPoint(
-                projectile.x,
-                projectile.y,
-            );
+            if (region == null) {
+                continue;
+            }
             final double radiusWorld = projectile.kind == 'rocket' ? 4 : 1.25;
-            shapes.circle(center.dx, center.dy, _radiusToScreen(radiusWorld), 10);
-        }
-    }
-
-    void _renderGrenades(ShapeRenderer shapes, List<GrenadeState> grenades) {
-        for (final GrenadeState grenade in grenades) {
-            shapes.setColor(grenadeColor);
-            final ui.Offset center = viewport.worldToScreenPoint(
-                grenade.x,
-                grenade.y,
+            final ui.Rect rect = viewport.worldToScreenRect(
+                projectile.x - radiusWorld,
+                projectile.y - radiusWorld,
+                radiusWorld * 2,
+                radiusWorld * 2,
             );
-            shapes.circle(center.dx, center.dy, _radiusToScreen(4), 14);
+            batch.setColor(isRocket ? rocketColor : projectileColor);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
         }
     }
 
-    void _renderDrones(ShapeRenderer shapes, List<DroneState> drones) {
+    void _renderGrenades(SpriteBatch batch, List<GrenadeState> grenades) {
+        final TextureRegion? region = _fullTextureRegion(defaultWeaponSpritePath);
+        if (region == null) {
+            return;
+        }
+        for (final GrenadeState grenade in grenades) {
+            final ui.Rect rect = viewport.worldToScreenRect(
+                grenade.x - 4,
+                grenade.y - 4,
+                8,
+                8,
+            );
+            batch.setColor(grenadeColor);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
+        }
+    }
+
+    void _renderDrones(SpriteBatch batch, List<DroneState> drones) {
+        final TextureRegion? region = _fullTextureRegion(droneSpritePath);
+        if (region == null) {
+            return;
+        }
         for (final DroneState drone in drones) {
-            shapes.setColor(droneColor);
             final ui.Rect rect = viewport.worldToScreenRect(
                 drone.x,
                 drone.y,
                 drone.width,
                 drone.height,
             );
-            shapes.rect(rect.left, rect.top, rect.width, rect.height);
+            batch.setColor(droneColor);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
         }
     }
 
     void _renderExplosions(
-        ShapeRenderer shapes,
+        SpriteBatch batch,
         List<ExplosionState> explosions,
     ) {
+        final TextureRegion? region = _fullTextureRegion(defaultWeaponSpritePath);
+        if (region == null) {
+            return;
+        }
         for (final ExplosionState explosion in explosions) {
-            shapes.setColor(explosionColor);
-            final ui.Offset center = viewport.worldToScreenPoint(
-                explosion.x,
-                explosion.y,
+            final double radiusWorld = 22;
+            final ui.Rect rect = viewport.worldToScreenRect(
+                explosion.x - radiusWorld,
+                explosion.y - radiusWorld,
+                radiusWorld * 2,
+                radiusWorld * 2,
             );
-            final double radius = _radiusToScreen(22);
-            shapes.circle(center.dx, center.dy, radius, 24);
+            batch.setColor(explosionColor);
+            batch.drawRegion(region.texture, region.srcRect, rect);
+            batch.setColor(const ui.Color(0xFFFFFFFF));
         }
     }
 
@@ -453,9 +517,14 @@ class PlayScreen extends ScreenAdapter {
     }
 
     void _renderAirstrikePlaceholders(
-        ShapeRenderer shapes,
+        SpriteBatch batch,
         List<AirstrikeWarningState> warnings,
     ) {
+        final TextureRegion? plane = _fullTextureRegion(airstrikeSpritePath);
+        final TextureRegion? bomb = _fullTextureRegion(defaultWeaponSpritePath);
+        if (plane == null || bomb == null) {
+            return;
+        }
         for (final AirstrikeWarningState warning in warnings) {
             final ui.Offset center = viewport.worldToScreenPoint(
                 warning.x,
@@ -471,15 +540,93 @@ class PlayScreen extends ScreenAdapter {
             final double planeY = center.dy - radius - 18;
             final double bombY = planeY + (radius + 18) * progress;
 
-            shapes.setColor(warningColor);
-            shapes.rect(planeX - 10, planeY - 2, 20, 4);
-            shapes.rect(planeX - 2, bombY - 2, 4, 4);
+            batch.setColor(warningColor);
+            batch.drawRegion(
+                plane.texture,
+                plane.srcRect,
+                ui.Rect.fromLTWH(planeX - 10, planeY - 4, 20, 8),
+            );
+            batch.drawRegion(
+                bomb.texture,
+                bomb.srcRect,
+                ui.Rect.fromLTWH(planeX - 2, bombY - 2, 4, 4),
+            );
+            batch.setColor(const ui.Color(0xFFFFFFFF));
+        }
+    }
+
+    void _drawPlayerWeapon(SpriteBatch batch, MultiplayerPlayer player) {
+        final String weaponId = player.primaryWeapon.trim();
+        if (weaponId.isEmpty) {
+            return;
+        }
+        final String weaponPath =
+                weaponSpriteById[weaponId] ?? defaultWeaponSpritePath;
+        final TextureRegion? region = _fullTextureRegion(weaponPath);
+        if (region == null) {
+            return;
+        }
+
+        final double cx = player.x + player.width * 0.5;
+        final double cy = player.y + player.height * 0.5;
+        final double dx = player.aimX - cx;
+        final double dy = player.aimY - cy;
+        final double len = math.sqrt(dx * dx + dy * dy);
+        final double ux = len > 0.0001 ? dx / len : 1;
+        final double uy = len > 0.0001 ? dy / len : 0;
+
+        const double holdDistance = 8;
+        const double weaponWidth = 12;
+        const double weaponHeight = 6;
+
+        final double wx = cx + ux * holdDistance;
+        final double wy = cy + uy * holdDistance;
+        final ui.Rect weaponRect = viewport.worldToScreenRect(
+            wx - weaponWidth * 0.5,
+            wy - weaponHeight * 0.5,
+            weaponWidth,
+            weaponHeight,
+        );
+        batch.drawRegion(region.texture, region.srcRect, weaponRect);
+    }
+
+    TextureRegion? _fullTextureRegion(String texturePath) {
+        final AssetManager assets = game.getAssetManager();
+        if (!assets.isLoaded(texturePath, Texture)) {
+            assets.load(texturePath, Texture);
+            return null;
+        }
+        final Texture texture = assets.get(texturePath, Texture);
+        return TextureRegion(
+            texture,
+            ui.Rect.fromLTWH(
+                0,
+                0,
+                texture.width.toDouble(),
+                texture.height.toDouble(),
+            ),
+        );
+    }
+
+    void _queueGameplaySpriteAssets() {
+        final AssetManager assets = game.getAssetManager();
+        final Set<String> paths = <String>{
+            playerSpritePath,
+            defaultWeaponSpritePath,
+            droneSpritePath,
+            airstrikeSpritePath,
+            ...weaponSpriteById.values,
+            ...consumableSpriteById.values,
+        };
+        for (final String path in paths) {
+            if (!assets.isLoaded(path, Texture)) {
+                assets.load(path, Texture);
+            }
         }
     }
 
     void _renderHud(AppData appData) {
         final MultiplayerPlayer? local = appData.localPlayer;
-        final double screenW = Gdx.graphics.getWidth().toDouble();
         final double screenH = Gdx.graphics.getHeight().toDouble();
 
         final ShapeRenderer shapes = game.getShapeRenderer();
@@ -901,6 +1048,8 @@ class PlayScreen extends ScreenAdapter {
         final Array<SpriteRuntimeState> runtimes = Array<SpriteRuntimeState>();
         for (int i = 0; i < data.sprites.size; i++) {
             final LevelSprite sprite = data.sprites.get(i);
+            final bool isTemplatePlayer =
+                    sprite.type.trim().toLowerCase() == 'player';
             runtimes.add(
                 SpriteRuntimeState(
                     sprite.frameIndex,
@@ -908,7 +1057,7 @@ class PlayScreen extends ScreenAdapter {
                     0,
                     sprite.x,
                     sprite.y,
-                    false,
+                    !isTemplatePlayer,
                     sprite.flipX,
                     sprite.flipY,
                     math.max(1, sprite.width.round()),

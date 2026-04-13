@@ -101,9 +101,9 @@
           "animationId": "anim_1773416599518464",
           "x": 32,
           "y": 32,
-          "width": 330,
+          "width": 333,
           "height": 333,
-          "imageFile": "media/soldier_2.png",
+          "imageFile": "media/soldier.png",
           "flipX": false,
           "flipY": false,
           "depth": 0.0,
@@ -209,146 +209,74 @@
       "groupId": "__main__"
     },
     {
-      "name": "Character Idle",
-      "fileName": "media/16x16 Idle-Sheet.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 20,
-      "tileHeight": 20,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "Character Walk",
-      "fileName": "media/16x16 Walk-Sheet.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 20,
-      "tileHeight": 20,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "Smoke",
-      "fileName": "media/DragonDeath.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 28,
-      "tileHeight": 26,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "Gem",
-      "fileName": "media/gem.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 15,
-      "tileHeight": 15,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "MP5_2",
-      "fileName": "media/MP5_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 512,
-      "tileHeight": 512,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "assault_rifle_2",
-      "fileName": "media/assault_rifle_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 32,
-      "tileHeight": 12,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "grenades_by_mtk_2",
-      "fileName": "media/grenades_by_mtk_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 47,
-      "tileHeight": 12,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "dron2d_2",
-      "fileName": "media/dron2d_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 626,
-      "tileHeight": 626,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "ak47_2",
-      "fileName": "media/ak47_2.png",
-      "mediaType": "tileset",
-      "tileWidth": 200,
-      "tileHeight": 120,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "awp_2",
-      "fileName": "media/awp_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 2560,
-      "tileHeight": 640,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "glock_2",
-      "fileName": "media/glock_2.png",
-      "mediaType": "tileset",
-      "tileWidth": 49,
-      "tileHeight": 49,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "grenade launcher beige_2",
-      "fileName": "media/grenade launcher beige_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 42,
-      "tileHeight": 19,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "smg_2",
-      "fileName": "media/smg_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 34,
-      "tileHeight": 15,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
-      "name": "shotgun_2",
-      "fileName": "media/shotgun_2.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 39,
-      "tileHeight": 10,
-      "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
-    },
-    {
       "name": "Player",
-      "fileName": "media/soldier_2.png",
+      "fileName": "media/soldier.png",
       "mediaType": "atlas",
-      "tileWidth": 330,
+      "tileWidth": 333,
       "tileHeight": 333,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
     {
-      "name": "rpg_2",
-      "fileName": "media/rpg_2.png",
+      "name": "SMG",
+      "fileName": "media/smg.png",
       "mediaType": "spritesheet",
-      "tileWidth": 39,
-      "tileHeight": 16,
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Glock",
+      "fileName": "media/glock.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "AWP",
+      "fileName": "media/awp.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Rifle Asalto",
+      "fileName": "media/rifle_asalto.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Escopeta",
+      "fileName": "media/escopeta.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Drone",
+      "fileName": "media/dron.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "F15",
+      "fileName": "media/f15.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 100,
+      "tileHeight": 100,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     }
