@@ -34,6 +34,7 @@ class MultiplayerPlayer {
   final String direction;
   final String facing;
   final bool moving;
+  final bool reloading;
   final int joinOrder;
 
   const MultiplayerPlayer({
@@ -62,6 +63,7 @@ class MultiplayerPlayer {
     required this.direction,
     required this.facing,
     required this.moving,
+    required this.reloading,
     required this.joinOrder,
   });
 
@@ -109,6 +111,7 @@ class MultiplayerPlayer {
       direction: (json['direction'] as String? ?? 'none').trim(),
       facing: (json['facing'] as String? ?? 'down').trim(),
       moving: json['moving'] as bool? ?? false,
+      reloading: json['reloading'] as bool? ?? false,
       joinOrder: (json['joinOrder'] as num? ?? 0).toInt(),
     );
   }
@@ -359,6 +362,7 @@ class _PlayerDynamicData {
   final String direction;
   final String facing;
   final bool moving;
+  final bool reloading;
 
   const _PlayerDynamicData({
     required this.id,
@@ -383,6 +387,7 @@ class _PlayerDynamicData {
     required this.direction,
     required this.facing,
     required this.moving,
+    required this.reloading,
   });
 }
 
@@ -887,6 +892,7 @@ class AppData extends ChangeNotifier {
       direction: (json['direction'] as String? ?? 'none').trim(),
       facing: (json['facing'] as String? ?? 'down').trim(),
       moving: json['moving'] as bool? ?? false,
+      reloading: json['reloading'] as bool? ?? false,
     );
   }
 
@@ -925,6 +931,7 @@ class AppData extends ChangeNotifier {
             direction: dynamicData?.direction ?? 'none',
             facing: dynamicData?.facing ?? 'down',
             moving: dynamicData?.moving ?? false,
+            reloading: dynamicData?.reloading ?? false,
             joinOrder: staticData?.joinOrder ?? 0,
           );
         })
@@ -1164,6 +1171,7 @@ class AppData extends ChangeNotifier {
         direction: 'none',
         facing: 'down',
         moving: false,
+        reloading: false,
       ),
     };
 
@@ -1455,6 +1463,12 @@ class AppData extends ChangeNotifier {
 
     final _TrainingWeaponStats stats = _trainingWeaponStatsFor(equipped.weaponType);
     _trainingReloadUntilSeconds = _trainingElapsedSeconds + stats.reloadSeconds;
+    _playerDynamicById = <String, _PlayerDynamicData>{
+      ..._playerDynamicById,
+      _trainingPlayerId: _copyDynamic(current, reloading: true),
+    };
+    _rebuildPlayers();
+    notifyListeners();
   }
 
   void _completeTrainingReloadIfNeeded(_PlayerDynamicData current) {
@@ -1466,15 +1480,27 @@ class AppData extends ChangeNotifier {
 
     final int slot = current.equippedSlot.clamp(0, 4);
     if (slot < 0 || slot >= current.inventory.length) {
+      _playerDynamicById = <String, _PlayerDynamicData>{
+        ..._playerDynamicById,
+        _trainingPlayerId: _copyDynamic(current, reloading: false),
+      };
       return;
     }
     final InventoryWeaponSlot? equipped = current.inventory[slot];
     if (equipped == null) {
+      _playerDynamicById = <String, _PlayerDynamicData>{
+        ..._playerDynamicById,
+        _trainingPlayerId: _copyDynamic(current, reloading: false),
+      };
       return;
     }
 
     final int needed = (equipped.maxClipAmmo - equipped.clipAmmo).clamp(0, equipped.maxClipAmmo);
     if (needed <= 0 || equipped.reserveAmmo <= 0) {
+      _playerDynamicById = <String, _PlayerDynamicData>{
+        ..._playerDynamicById,
+        _trainingPlayerId: _copyDynamic(current, reloading: false),
+      };
       return;
     }
     final int transfer = math.min(needed, equipped.reserveAmmo);
@@ -1504,6 +1530,7 @@ class AppData extends ChangeNotifier {
           clipAmmo: updatedSlot.clipAmmo,
           reserveAmmo: updatedSlot.reserveAmmo,
         ),
+        reloading: false,
       ),
     };
   }
@@ -1830,6 +1857,7 @@ class AppData extends ChangeNotifier {
     String? direction,
     String? facing,
     bool? moving,
+    bool? reloading,
     double? aimX,
     double? aimY,
     int? equippedSlot,
@@ -1859,6 +1887,7 @@ class AppData extends ChangeNotifier {
       direction: direction ?? source.direction,
       facing: facing ?? source.facing,
       moving: moving ?? source.moving,
+      reloading: reloading ?? source.reloading,
     );
   }
 

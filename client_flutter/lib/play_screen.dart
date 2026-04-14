@@ -66,6 +66,8 @@ class PlayScreen extends ScreenAdapter {
   double _crosshairWorldX = 0;
   double _crosshairWorldY = 0;
   double _lastShootRequestSeconds = -1;
+  final Map<String, int> _lastClipAmmoByPlayer = <String, int>{};
+  final Map<String, double> _shotAnimUntilByPlayer = <String, double>{};
 
   PlayScreen(this.game, this.levelIndex) {
     levelData = LevelLoader.loadLevel(levelIndex);
@@ -194,6 +196,7 @@ class PlayScreen extends ScreenAdapter {
           });
 
     for (final MultiplayerPlayer player in orderedPlayers) {
+      _updateCombatVisualState(player);
       final _AnimatedSpriteFrame frame = _playerFrameFor(player);
       final bool isLocalPlayer = player.id == localPlayerId;
       if (!isLocalPlayer) {
@@ -223,6 +226,7 @@ class PlayScreen extends ScreenAdapter {
         height: player.height,
         flipX: frame.flipX,
       );
+      _renderWeaponInHands(batch, player, isLocalPlayer: isLocalPlayer);
       if (!isLocalPlayer && usingRemotePlayerOpacity) {
         batch.setColor(1, 1, 1, remotePlayerOpacity);
       } else {
@@ -248,6 +252,83 @@ class PlayScreen extends ScreenAdapter {
         height: gem.height,
       );
     }
+  }
+
+  void _updateCombatVisualState(MultiplayerPlayer player) {
+    final EquippedWeapon? weapon = player.equippedWeapon;
+    if (weapon == null) {
+      _lastClipAmmoByPlayer.remove(player.id);
+      _shotAnimUntilByPlayer.remove(player.id);
+      return;
+    }
+    final int currentClip = weapon.clipAmmo;
+    final int? previousClip = _lastClipAmmoByPlayer[player.id];
+    if (previousClip != null && currentClip < previousClip && !player.reloading) {
+      _shotAnimUntilByPlayer[player.id] = elapsedSeconds + 0.14;
+    }
+    _lastClipAmmoByPlayer[player.id] = currentClip;
+  }
+
+  void _renderWeaponInHands(
+    SpriteBatch batch,
+    MultiplayerPlayer player, {
+    required bool isLocalPlayer,
+  }) {
+    final EquippedWeapon? weapon = player.equippedWeapon;
+    if (weapon == null || weapon.texturePath.isEmpty) {
+      return;
+    }
+    final String texturePath = 'levels/${weapon.texturePath}';
+    final AssetManager assets = game.getAssetManager();
+    if (!assets.isLoaded(texturePath, Texture)) {
+      return;
+    }
+
+    final double centerX = player.x + player.width * 0.5;
+    final double centerY = player.y + player.height * 0.5;
+    double aimDx = player.aimX - centerX;
+    double aimDy = player.aimY - centerY;
+    final double aimLen = math.sqrt(aimDx * aimDx + aimDy * aimDy);
+    if (aimLen > 0.0001) {
+      aimDx /= aimLen;
+      aimDy /= aimLen;
+    } else {
+      final ui.Offset facing = _facingToVector(player.facing);
+      aimDx = facing.dx;
+      aimDy = facing.dy;
+    }
+
+    final double shootUntil = _shotAnimUntilByPlayer[player.id] ?? -1;
+    final double shotT = shootUntil <= elapsedSeconds
+        ? 0
+        : 1 - ((shootUntil - elapsedSeconds) / 0.14);
+    final double recoil = math.sin(clampDouble(shotT, 0, 1) * math.pi) * 5;
+    final double reloadBob = player.reloading
+        ? math.sin(elapsedSeconds * 20 + (isLocalPlayer ? 0 : 1.3)) * 2.0
+        : 0;
+
+    final double weaponWidth = player.width * 0.92;
+    final double weaponHeight = math.max(8, player.height * 0.32);
+    final double holdDistance = player.width * 0.33;
+    final double weaponX =
+        centerX + aimDx * holdDistance - weaponWidth * 0.5 - aimDx * recoil;
+    final double weaponY =
+        centerY + aimDy * holdDistance - weaponHeight * 0.5 - aimDy * recoil + reloadBob;
+
+    final Texture texture = assets.get(texturePath, Texture);
+    final ui.Rect src = ui.Rect.fromLTWH(
+      0,
+      0,
+      texture.width.toDouble(),
+      texture.height.toDouble(),
+    );
+    final ui.Rect dst = viewport.worldToScreenRect(
+      weaponX,
+      weaponY,
+      weaponWidth,
+      weaponHeight,
+    );
+    batch.drawRegion(texture, src, dst, flipX: aimDx < 0);
   }
 
   void _drawAnimatedSprite(
@@ -365,12 +446,9 @@ class PlayScreen extends ScreenAdapter {
     }
 
     final double screenWidth = Gdx.graphics.getWidth().toDouble();
-    final double screenHeight = Gdx.graphics.getHeight().toDouble();
     final double reservedRight = _isTrainingMode() ? 0 : leaderboardWidth;
-    final double usableWidth = math.max(
-      220,
-      screenWidth - reservedRight - hudPadding * 2,
-    );
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
+    final double usableWidth = math.max(300, screenWidth - reservedRight - hudPadding * 2);
     final double hpPercent = local.maxHealth <= 0
         ? 0
         : local.health / local.maxHealth;
@@ -378,37 +456,36 @@ class PlayScreen extends ScreenAdapter {
         ? 0
         : local.shield / local.maxShield;
     const double barHeight = 14;
+    const double hotbarGap = 10;
     final double hotbarWidth = hotbarSlotSize * 5 + 8 * 4;
-    final double hotbarLeft = math.max(
-      16,
-      (usableWidth - hotbarWidth) * 0.5 + hudPadding,
-    );
-    final double hudPanelGap = 10;
-    final double leftPanelWidth = math.max(
-      170,
-      hotbarLeft - hudPadding - hudPanelGap,
-    );
-    final double leftPanelInner = math.max(120, leftPanelWidth - 10);
+    final double desiredLeftPanel = 198;
+    final double totalClusterWidth = desiredLeftPanel + hotbarGap + hotbarWidth;
+    final double shrink = math.max(0, totalClusterWidth - usableWidth);
+    final double leftPanelWidth = math.max(130, desiredLeftPanel - shrink);
+    final double hotbarLeft = hudPadding + leftPanelWidth + hotbarGap;
+    final double leftPanelInner = math.max(100, leftPanelWidth - 12);
     final double hotbarTop = screenHeight - hotbarHeight;
-    final double shieldBarTop = hotbarTop - 56;
-    final double healthBarTop = hotbarTop - 34;
-    final double statsTextY = hotbarTop - 10;
+    final double healthBarTop = hotbarTop - 56;
+    final double shieldBarTop = hotbarTop - 34;
+    final double leftPanelX = hudPadding;
+    final double aliveY = hotbarTop - 13;
+    final double killsY = hotbarTop + 7;
 
     final ShapeRenderer shapes = game.getShapeRenderer();
     shapes.begin(ShapeType.filled);
     shapes.setColor(hudBarBackground);
-    shapes.rect(hudPadding, healthBarTop, leftPanelInner, barHeight);
-    shapes.rect(hudPadding, shieldBarTop, leftPanelInner, barHeight);
+    shapes.rect(leftPanelX, healthBarTop, leftPanelInner, barHeight);
+    shapes.rect(leftPanelX, shieldBarTop, leftPanelInner, barHeight);
     shapes.setColor(hpColor);
     shapes.rect(
-      hudPadding,
+      leftPanelX,
       healthBarTop,
       leftPanelInner * clampDouble(hpPercent, 0, 1),
       barHeight,
     );
     shapes.setColor(shieldColor);
     shapes.rect(
-      hudPadding,
+      leftPanelX,
       shieldBarTop,
       leftPanelInner * clampDouble(shieldPercent, 0, 1),
       barHeight,
@@ -422,26 +499,35 @@ class PlayScreen extends ScreenAdapter {
       batch,
       font,
       'HP ${local.health.round()} / ${local.maxHealth.round()}',
-      hudPadding,
+      leftPanelX,
       healthBarTop - 6,
-      1,
+      0.9,
       local.health <= 25 ? dangerColor : textColor,
     );
     _drawLeftAlignedText(
       batch,
       font,
       'Shield ${local.shield.round()} / ${local.maxShield.round()}',
-      hudPadding,
+      leftPanelX,
       shieldBarTop - 6,
-      1,
+      0.9,
       textColor,
     );
     _drawLeftAlignedText(
       batch,
       font,
-      'Alive: ${appData.alivePlayers}   Kills: ${local.kills}',
-      hudPadding,
-      statsTextY,
+      'Alive: ${appData.alivePlayers}',
+      leftPanelX,
+      aliveY,
+      0.92,
+      dimTextColor,
+    );
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Kills: ${local.kills}',
+      leftPanelX,
+      killsY,
       0.92,
       dimTextColor,
     );
@@ -967,6 +1053,49 @@ class PlayScreen extends ScreenAdapter {
     return clampDouble(parsed, 0.2, 1);
   }
 
+  String _animationFacingSuffix(String facing) {
+    switch (facing) {
+      case 'up':
+        return 'up';
+      case 'upLeft':
+      case 'left':
+        return 'left';
+      case 'upRight':
+      case 'right':
+        return 'right';
+      case 'downLeft':
+        return 'down_left';
+      case 'downRight':
+        return 'down_right';
+      case 'down':
+      default:
+        return 'down';
+    }
+  }
+
+  ui.Offset _facingToVector(String facing) {
+    switch (facing) {
+      case 'up':
+        return const ui.Offset(0, -1);
+      case 'upLeft':
+        return const ui.Offset(-0.7071, -0.7071);
+      case 'left':
+        return const ui.Offset(-1, 0);
+      case 'downLeft':
+        return const ui.Offset(-0.7071, 0.7071);
+      case 'down':
+        return const ui.Offset(0, 1);
+      case 'downRight':
+        return const ui.Offset(0.7071, 0.7071);
+      case 'right':
+        return const ui.Offset(1, 0);
+      case 'upRight':
+        return const ui.Offset(0.7071, -0.7071);
+      default:
+        return const ui.Offset(0, 1);
+    }
+  }
+
   LevelSprite _findPlayerTemplate(LevelData data) {
     for (final LevelSprite sprite in data.sprites.iterable()) {
       final String type = normalize(sprite.type);
@@ -1003,37 +1132,43 @@ class PlayScreen extends ScreenAdapter {
 
   _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
     final String facing = player.facing;
-    String animationName;
+    final String suffix = _animationFacingSuffix(facing);
+    final bool isShooting = (_shotAnimUntilByPlayer[player.id] ?? -1) > elapsedSeconds;
+    final bool isReloading = player.reloading;
 
-    switch (facing) {
-      case 'left':
-        animationName = 'player_left';
-        break;
-      case 'upLeft':
-        animationName = 'player_left';
-        break;
-      case 'downLeft':
-        animationName = 'player_down_left';
-        break;
-      case 'right':
-        animationName = 'player_right';
-        break;
-      case 'upRight':
-        animationName = 'player_right';
-        break;
-      case 'up':
-        animationName = 'player_up';
-        break;
-      case 'downRight':
-        animationName = 'player_down_right';
-        break;
-      case 'down':
-      default:
-        animationName = 'player_down';
-        break;
+    final List<String> candidates = <String>[];
+    if (isReloading) {
+      candidates.addAll(<String>[
+        'player_reload_$suffix',
+        'player_${suffix}_reload',
+        'reload_$suffix',
+        'player_reload',
+        'reload',
+      ]);
+    } else if (isShooting) {
+      candidates.addAll(<String>[
+        'player_shoot_$suffix',
+        'player_${suffix}_shoot',
+        'shoot_$suffix',
+        'player_shoot',
+        'shoot',
+      ]);
     }
+    candidates.addAll(<String>[
+      'player_$suffix',
+      suffix,
+      'player_down',
+    ]);
 
-    return _frameFromTemplate(playerTemplate, animationName: animationName);
+    final String? animationId = _findAnimationIdByNames(candidates);
+    if (animationId == null) {
+      return _frameFromTemplate(playerTemplate, animationName: 'player_down');
+    }
+    final AnimationClip? clip = levelData.animationClips.get(animationId);
+    if (clip == null) {
+      return _frameFromTemplate(playerTemplate, animationName: 'player_down');
+    }
+    return _frameForClip(playerTemplate, clip, isLooping: true);
   }
 
   _AnimatedSpriteFrame _frameFromTemplate(
@@ -1069,11 +1204,25 @@ class PlayScreen extends ScreenAdapter {
       );
     }
 
+    return _frameForClip(template, clip, isLooping: clip.loop, flipX: flipX);
+  }
+
+  _AnimatedSpriteFrame _frameForClip(
+    LevelSprite template,
+    AnimationClip clip, {
+    required bool isLooping,
+    bool flipX = false,
+  }) {
     final int start = math.max(0, clip.startFrame);
     final int end = math.max(start, clip.endFrame);
     final int span = math.max(1, end - start + 1);
     final double fps = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 8;
-    final int offset = ((elapsedSeconds * fps).floor()) % span;
+    int offset = (elapsedSeconds * fps).floor();
+    if (isLooping) {
+      offset %= span;
+    } else {
+      offset = clampInt(offset, 0, span - 1);
+    }
     final int frameIndex = start + offset;
     final FrameRig? frameRig = clip.frameRigs.get(frameIndex);
     return _AnimatedSpriteFrame(
@@ -1097,6 +1246,16 @@ class PlayScreen extends ScreenAdapter {
         in levelData.animationClips.entries()) {
       if (normalize(entry.value.name) == normalized) {
         return entry.key;
+      }
+    }
+    return null;
+  }
+
+  String? _findAnimationIdByNames(List<String> animationNames) {
+    for (final String name in animationNames) {
+      final String? id = _findAnimationIdByName(name);
+      if (id != null && id.isNotEmpty) {
+        return id;
       }
     }
     return null;
