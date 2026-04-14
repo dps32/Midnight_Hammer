@@ -6,996 +6,12 @@
       "collapsed": false
     },
     {
-      "id": "__group_1773416516180721_0",
+      "id": "__group_1776175104827127_0",
       "name": "soldier",
       "collapsed": false
     }
   ],
   "animations": [
-    {
-      "id": "anim_1772099194341380",
-      "name": "Character Idle Down",
-      "mediaFile": "media/16x16 Idle-Sheet.png",
-      "startFrame": 0,
-      "endFrame": 3,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772400438313192_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 0,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400438313192_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 1,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400438313192_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 2,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400438313192_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 3,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400438313192_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099235919869",
-      "name": "Character Idle Down-Right",
-      "mediaFile": "media/16x16 Idle-Sheet.png",
-      "startFrame": 4,
-      "endFrame": 7,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772400448794454_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 4,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400448794454_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 5,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400448794454_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 6,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400448794454_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 7,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772400448794454_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099263954479",
-      "name": "Character Idle Right",
-      "mediaFile": "media/16x16 Idle-Sheet.png",
-      "startFrame": 8,
-      "endFrame": 11,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431532603972_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.25,
-          "y": 0.19999999999999996,
-          "width": 0.5,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 8,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431532603972_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 9,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431532603972_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 10,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431532603972_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 11,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431532603972_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099284318147",
-      "name": "Character Idle Up-Right",
-      "mediaFile": "media/16x16 Idle-Sheet.png",
-      "startFrame": 12,
-      "endFrame": 15,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431535197991_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.25,
-          "y": 0.19999999999999996,
-          "width": 0.5,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 12,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431535197991_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 13,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431535197991_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 14,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431535197991_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 15,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431535197991_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099299323661",
-      "name": "Character Idle Up",
-      "mediaFile": "media/16x16 Idle-Sheet.png",
-      "startFrame": 16,
-      "endFrame": 19,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431537898774_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 16,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431537898774_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 17,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431537898774_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 18,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431537898774_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 19,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431537898774_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099423666593",
-      "name": "Character  Walk Down",
-      "mediaFile": "media/16x16 Walk-Sheet.png",
-      "startFrame": 0,
-      "endFrame": 3,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772598249635417_1",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 0,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772598249635417_1",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 1,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772598249635417_1",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 2,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772598249635417_1",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 3,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772598249635417_1",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099432167084",
-      "name": "Character  Walk Down-Right",
-      "mediaFile": "media/16x16 Walk-Sheet.png",
-      "startFrame": 4,
-      "endFrame": 7,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431570330814_0",
-          "name": "Hit Box 1",
-          "color": "lightGreen",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 4,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431570330814_0",
-              "name": "Hit Box 1",
-              "color": "lightGreen",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 5,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431570330814_0",
-              "name": "Hit Box 1",
-              "color": "lightGreen",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 6,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431570330814_0",
-              "name": "Hit Box 1",
-              "color": "lightGreen",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 7,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431570330814_0",
-              "name": "Hit Box 1",
-              "color": "lightGreen",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099439457925",
-      "name": "Character  Walk Right",
-      "mediaFile": "media/16x16 Walk-Sheet.png",
-      "startFrame": 8,
-      "endFrame": 11,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431573030234_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.25,
-          "y": 0.19999999999999996,
-          "width": 0.5,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 8,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431573030234_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 9,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431573030234_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 10,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431573030234_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 11,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431573030234_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099455402130",
-      "name": "Character  Walk Up-Right",
-      "mediaFile": "media/16x16 Walk-Sheet.png",
-      "startFrame": 12,
-      "endFrame": 15,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431576148411_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.25,
-          "y": 0.19999999999999996,
-          "width": 0.5,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 12,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431576148411_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 13,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431576148411_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 14,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431576148411_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 15,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431576148411_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.25,
-              "y": 0.19999999999999996,
-              "width": 0.5,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772099462736390",
-      "name": "Character  Walk Up",
-      "mediaFile": "media/16x16 Walk-Sheet.png",
-      "startFrame": 16,
-      "endFrame": 19,
-      "fps": 8.0,
-      "loop": true,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.7,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1772431579214967_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.2,
-          "y": 0.19999999999999996,
-          "width": 0.6,
-          "height": 0.8
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 16,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431579214967_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 17,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431579214967_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 18,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431579214967_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        },
-        {
-          "frame": 19,
-          "anchorX": 0.5,
-          "anchorY": 0.7,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1772431579214967_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.2,
-              "y": 0.19999999999999996,
-              "width": 0.6,
-              "height": 0.8
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "anim_1772439629355555",
-      "name": "Smoke",
-      "mediaFile": "media/DragonDeath.png",
-      "startFrame": 0,
-      "endFrame": 3,
-      "fps": 4.0,
-      "loop": false,
-      "groupId": "__main__",
-      "anchorX": 0.5,
-      "anchorY": 0.5,
-      "anchorColor": "red",
-      "hitBoxes": [],
-      "frameRigs": [
-        {
-          "frame": 0,
-          "anchorX": 0.5,
-          "anchorY": 0.5,
-          "anchorColor": "red",
-          "hitBoxes": []
-        },
-        {
-          "frame": 1,
-          "anchorX": 0.5,
-          "anchorY": 0.5,
-          "anchorColor": "red",
-          "hitBoxes": []
-        },
-        {
-          "frame": 2,
-          "anchorX": 0.5,
-          "anchorY": 0.5,
-          "anchorColor": "red",
-          "hitBoxes": []
-        },
-        {
-          "frame": 3,
-          "anchorX": 0.5,
-          "anchorY": 0.5,
-          "anchorColor": "red",
-          "hitBoxes": []
-        }
-      ]
-    },
     {
       "id": "anim_1772440074459800",
       "name": "Gem Purple",
@@ -1441,20 +457,114 @@
       ]
     },
     {
-      "id": "anim_1773416599518464",
+      "id": "anim_1772099194341380",
+      "name": "Character Idle Down",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 0,
+      "endFrame": 3,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__main__",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772400438313192_0",
+          "name": "Hit Box 1",
+          "color": "green",
+          "x": 0.2,
+          "y": 0.19999999999999996,
+          "width": 0.6,
+          "height": 0.8
+        }
+      ],
+      "frameRigs": [
+        {
+          "frame": 0,
+          "anchorX": 0.5,
+          "anchorY": 0.7,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1772400438313192_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.2,
+              "y": 0.19999999999999996,
+              "width": 0.6,
+              "height": 0.8
+            }
+          ]
+        },
+        {
+          "frame": 1,
+          "anchorX": 0.5,
+          "anchorY": 0.7,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1772400438313192_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.2,
+              "y": 0.19999999999999996,
+              "width": 0.6,
+              "height": 0.8
+            }
+          ]
+        },
+        {
+          "frame": 2,
+          "anchorX": 0.5,
+          "anchorY": 0.7,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1772400438313192_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.2,
+              "y": 0.19999999999999996,
+              "width": 0.6,
+              "height": 0.8
+            }
+          ]
+        },
+        {
+          "frame": 3,
+          "anchorX": 0.5,
+          "anchorY": 0.7,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1772400438313192_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.2,
+              "y": 0.19999999999999996,
+              "width": 0.6,
+              "height": 0.8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anim_1776175283477226",
       "name": "soldier down",
-      "mediaFile": "media/soldier.png",
+      "mediaFile": "media/soldier_2.png",
       "startFrame": 0,
       "endFrame": 0,
-      "fps": 12.5,
+      "fps": 12.0,
       "loop": true,
-      "groupId": "__group_1773416516180721_0",
+      "groupId": "__group_1776175104827127_0",
       "anchorX": 0.37237237237237236,
       "anchorY": 0.42042042042042044,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1776099978328961_0",
+          "id": "__hb_1776175407376225_0",
           "name": "Hit Box 1",
           "color": "green",
           "x": 0.06606606606606606,
@@ -1471,7 +581,7 @@
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1776099978328961_0",
+              "id": "__hb_1776175407376225_0",
               "name": "Hit Box 1",
               "color": "green",
               "x": 0.06606606606606606,
@@ -1484,20 +594,20 @@
       ]
     },
     {
-      "id": "anim_1773416849964663",
+      "id": "anim_4",
       "name": "soldier up",
-      "mediaFile": "media/soldier.png",
+      "mediaFile": "media/soldier_2.png",
       "startFrame": 1,
       "endFrame": 1,
       "fps": 12.0,
       "loop": true,
-      "groupId": "__group_1773416516180721_0",
+      "groupId": "__group_1776175104827127_0",
       "anchorX": 0.4774774774774775,
       "anchorY": 0.42042042042042044,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1776099974962406_0",
+          "id": "__hb_1776175409173677_0",
           "name": "Hit Box 1",
           "color": "green",
           "x": 0.18618618618618618,
@@ -1514,7 +624,7 @@
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1776099974962406_0",
+              "id": "__hb_1776175409173677_0",
               "name": "Hit Box 1",
               "color": "green",
               "x": 0.18618618618618618,
@@ -1527,63 +637,20 @@
       ]
     },
     {
-      "id": "anim_4",
-      "name": "soldier left",
-      "mediaFile": "media/soldier.png",
-      "startFrame": 6,
-      "endFrame": 6,
-      "fps": 12.0,
-      "loop": true,
-      "groupId": "__group_1773416516180721_0",
-      "anchorX": 0.3708708708708709,
-      "anchorY": 0.5810810810810811,
-      "anchorColor": "red",
-      "hitBoxes": [
-        {
-          "id": "__hb_1776099972275200_0",
-          "name": "Hit Box 1",
-          "color": "green",
-          "x": 0.06306306306306306,
-          "y": 0.16216216216216217,
-          "width": 0.6156156156156156,
-          "height": 0.8378378378378378
-        }
-      ],
-      "frameRigs": [
-        {
-          "frame": 6,
-          "anchorX": 0.3708708708708709,
-          "anchorY": 0.5810810810810811,
-          "anchorColor": "red",
-          "hitBoxes": [
-            {
-              "id": "__hb_1776099972275200_0",
-              "name": "Hit Box 1",
-              "color": "green",
-              "x": 0.06306306306306306,
-              "y": 0.16216216216216217,
-              "width": 0.6156156156156156,
-              "height": 0.8378378378378378
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "anim_5",
       "name": "soldier right",
-      "mediaFile": "media/soldier.png",
+      "mediaFile": "media/soldier_2.png",
       "startFrame": 4,
       "endFrame": 4,
       "fps": 12.0,
       "loop": true,
-      "groupId": "__group_1773416516180721_0",
+      "groupId": "__group_1776175104827127_0",
       "anchorX": 0.46096096096096095,
       "anchorY": 0.5,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1776099968702083_0",
+          "id": "__hb_1776175411424754_0",
           "name": "Hit Box 1",
           "color": "green",
           "x": 0.15315315315315314,
@@ -1600,7 +667,7 @@
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1776099968702083_0",
+              "id": "__hb_1776175411424754_0",
               "name": "Hit Box 1",
               "color": "green",
               "x": 0.15315315315315314,
@@ -1614,19 +681,62 @@
     },
     {
       "id": "anim_6",
-      "name": "soldier left-down",
-      "mediaFile": "media/soldier.png",
+      "name": "soldier left",
+      "mediaFile": "media/soldier_2.png",
+      "startFrame": 6,
+      "endFrame": 6,
+      "fps": 12.0,
+      "loop": true,
+      "groupId": "__group_1776175104827127_0",
+      "anchorX": 0.3708708708708709,
+      "anchorY": 0.5810810810810811,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1776175414008994_0",
+          "name": "Hit Box 1",
+          "color": "green",
+          "x": 0.06306306306306306,
+          "y": 0.16216216216216217,
+          "width": 0.6156156156156156,
+          "height": 0.8378378378378378
+        }
+      ],
+      "frameRigs": [
+        {
+          "frame": 6,
+          "anchorX": 0.3708708708708709,
+          "anchorY": 0.5810810810810811,
+          "anchorColor": "red",
+          "hitBoxes": [
+            {
+              "id": "__hb_1776175414008994_0",
+              "name": "Hit Box 1",
+              "color": "green",
+              "x": 0.06306306306306306,
+              "y": 0.16216216216216217,
+              "width": 0.6156156156156156,
+              "height": 0.8378378378378378
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anim_7",
+      "name": "soldier down-left",
+      "mediaFile": "media/soldier_2.png",
       "startFrame": 5,
       "endFrame": 5,
       "fps": 12.0,
       "loop": true,
-      "groupId": "__group_1773416516180721_0",
+      "groupId": "__group_1776175104827127_0",
       "anchorX": 0.6081081081081081,
       "anchorY": 0.5,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1776099966033369_0",
+          "id": "__hb_1776175416496385_0",
           "name": "Hit Box 1",
           "color": "green",
           "x": 0.2912912912912913,
@@ -1643,7 +753,7 @@
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1776099966033369_0",
+              "id": "__hb_1776175416496385_0",
               "name": "Hit Box 1",
               "color": "green",
               "x": 0.2912912912912913,
@@ -1656,20 +766,20 @@
       ]
     },
     {
-      "id": "anim_7",
-      "name": "soldier right-down",
-      "mediaFile": "media/soldier.png",
+      "id": "anim_8",
+      "name": "soldier down-right",
+      "mediaFile": "media/soldier_2.png",
       "startFrame": 3,
       "endFrame": 3,
       "fps": 12.0,
       "loop": true,
-      "groupId": "__group_1773416516180721_0",
+      "groupId": "__group_1776175104827127_0",
       "anchorX": 0.3633633633633634,
       "anchorY": 0.5075075075075075,
       "anchorColor": "red",
       "hitBoxes": [
         {
-          "id": "__hb_1776099960427981_0",
+          "id": "__hb_1776175419092291_0",
           "name": "Hit Box 1",
           "color": "green",
           "x": 0.04804804804804805,
@@ -1686,7 +796,7 @@
           "anchorColor": "red",
           "hitBoxes": [
             {
-              "id": "__hb_1776099960427981_0",
+              "id": "__hb_1776175419092291_0",
               "name": "Hit Box 1",
               "color": "green",
               "x": 0.04804804804804805,

@@ -1,7 +1,8 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'app_data.dart';
+import 'debug_overlay.dart';
 import 'game_app.dart';
 import 'libgdx_compat/asset_manager.dart';
 import 'libgdx_compat/game_framework.dart';
@@ -12,1183 +13,882 @@ import 'libgdx_compat/viewport.dart';
 import 'level_data.dart';
 import 'level_loader.dart';
 import 'level_renderer.dart';
+import 'player_list_renderer.dart';
 import 'runtime_transform.dart';
 import 'waiting_room_screen.dart';
 
 class PlayScreen extends ScreenAdapter {
-    static const double maxFrameSeconds = 0.25;
-    static const double hudPadding = 14;
-    static const double hudPanelWidth = 360;
-    static const double grenadeThrowRange = 260;
-    static const double grenadeInnerRadius = 28;
-    static const double grenadeOuterRadius = 90;
+  static const double leaderboardWidth = 320;
+  static const double leaderboardPadding = 14;
+  static const double leaderboardRowHeight = 24;
+  static const double leaderboardStartY = 92;
+  static const double maxFrameSeconds = 0.25;
+  static const double remotePlayerOpacity = 0.5;
+  static const double localPlayerRingPadding = 6;
+  static const double hudSlotSize = 42;
+  static const double hudSlotGap = 8;
 
-    static final ui.Color playerLocalColor = colorValueOf('4CB1FF');
-    static final ui.Color playerEnemyColor = colorValueOf('FF6B6B');
-    static final ui.Color droneColor = colorValueOf('5BFF9D');
-    static final ui.Color lootWeaponColor = colorValueOf('FFC857');
-    static final ui.Color lootConsumableColor = colorValueOf('8A7DFF');
-    static final ui.Color projectileColor = colorValueOf('FFF176');
-    static final ui.Color rocketColor = colorValueOf('FF9E57');
-    static final ui.Color grenadeColor = colorValueOf('A7FF83');
-    static final ui.Color stormColor = colorValueOf('45D5FF');
-    static final ui.Color warningColor = colorValueOf('FF3434');
-    static final ui.Color explosionColor = colorValueOf('FFA24A99');
-    static final ui.Color grenadePreviewOuterColor = colorValueOf('A7FF8388');
-    static final ui.Color grenadePreviewInnerColor = colorValueOf('EAFFAA');
-    static final ui.Color hudPanelColor = colorValueOf('071410D8');
-    static final ui.Color hudStrokeColor = colorValueOf('35FF74');
-    static final ui.Color hudTextColor = colorValueOf('DFFFF1');
-    static final ui.Color hudDimTextColor = colorValueOf('7FB29A');
-    static final ui.Color winnerOverlayColor = colorValueOf('000000C0');
-    static final ui.Color airstrikeOverlayColor = colorValueOf('000000CF');
-    static final ui.Color airstrikeMapFill = colorValueOf('102822');
-    static final ui.Color airstrikeMapStroke = colorValueOf('35FF74');
-    static final ui.Color airstrikeLocalPoint = colorValueOf('4CB1FF');
-    static final ui.Color airstrikeEnemyPoint = colorValueOf('FF4747');
+  static final ui.Color panelFill = colorValueOf('09140CCC');
+  static final ui.Color panelStroke = colorValueOf('35FF74');
+  static final ui.Color titleColor = colorValueOf('FFFFFF');
+  static final ui.Color textColor = colorValueOf('D8FFE3');
+  static final ui.Color dimTextColor = colorValueOf('76A784');
+  static final ui.Color localPlayerColor = colorValueOf('FFE07A');
+  static final ui.Color winnerOverlayColor = colorValueOf('000000B8');
+  static final ui.Color hudPanelColor = colorValueOf('0A0F16CC');
+  static final ui.Color hudStrokeColor = colorValueOf('7FA0BF');
+  static final ui.Color hpColor = colorValueOf('35FF74');
+  static final ui.Color shieldColor = colorValueOf('43B6FF');
 
-    static const String playerSpritePath = 'levels/media/soldier.png';
-    static const String defaultWeaponSpritePath = 'levels/media/glock.png';
-    static const String droneSpritePath = 'levels/media/dron.png';
-    static const String airstrikeSpritePath = 'levels/media/f15.png';
+  final GameApp game;
+  final int levelIndex;
+  final OrthographicCamera camera = OrthographicCamera();
+  final LevelRenderer levelRenderer = LevelRenderer();
+  final DebugOverlay debugOverlay = DebugOverlay();
+  final GlyphLayout layout = GlyphLayout();
 
-    static const Map<String, String> weaponSpriteById = <String, String>{
-        'pistol': 'levels/media/glock.png',
-        'smg': 'levels/media/smg.png',
-        'rifle': 'levels/media/rifle_asalto.png',
-        'sniper': 'levels/media/awp.png',
-        'rocket': 'levels/media/escopeta.png',
-    };
+  late final LevelData levelData;
+  late final Viewport viewport;
+  late final List<bool> layerVisibilityStates;
+  late final Array<SpriteRuntimeState> spriteRuntimeStates;
+  late final Array<RuntimeTransform> layerRuntimeStates;
+  late final Array<RuntimeTransform> zoneRuntimeStates;
+  late final LevelSprite playerTemplate;
+  late final Map<String, LevelSprite> gemTemplateByType;
 
-    static const Map<String, String> consumableSpriteById = <String, String>{
-        'grenade': 'levels/media/glock.png',
-        'drone': 'levels/media/dron.png',
-        'airstrike': 'levels/media/f15.png',
-    };
+  double elapsedSeconds = 0;
+  String _lastSubmittedDirection = 'none';
+  bool _showDebugOverlay = false;
+  ui.Offset? _localPlayerHighlightCenter;
+  double? _localPlayerHighlightRadius;
+  ui.Offset _crosshair = const ui.Offset(400, 300);
 
-    final GameApp game;
-    final int levelIndex;
+  PlayScreen(this.game, this.levelIndex) {
+    levelData = LevelLoader.loadLevel(levelIndex);
+    viewport = _createViewport(levelData, camera);
+    layerVisibilityStates = _buildInitialLayerVisibility(levelData);
+    spriteRuntimeStates = _createHiddenTemplateRuntimes(levelData);
+    layerRuntimeStates = _createLayerRuntimeStates(levelData);
+    zoneRuntimeStates = _createZoneRuntimeStates(levelData);
+    playerTemplate = _findPlayerTemplate(levelData);
+    gemTemplateByType = _buildGemTemplates(levelData);
+    _applyInitialCameraFromLevel();
+    viewport.update(
+      Gdx.graphics.getWidth().toDouble(),
+      Gdx.graphics.getHeight().toDouble(),
+      false,
+    );
+  }
 
-    final OrthographicCamera camera = OrthographicCamera();
-    final LevelRenderer levelRenderer = LevelRenderer();
-    final GlyphLayout layout = GlyphLayout();
+  @override
+  void render(double delta) {
+    elapsedSeconds += math.max(0, math.min(delta, maxFrameSeconds));
 
-    late final LevelData levelData;
-    late final Viewport viewport;
-    late final List<bool> layerVisibilityStates;
-    late final Array<SpriteRuntimeState> spriteRuntimeStates;
-    late final Array<RuntimeTransform> layerRuntimeStates;
-
-    ui.Rect? _airstrikeMapRect;
-    double elapsedSeconds = 0;
-    int? _equippedGrenadeSlot;
-    bool _suppressFireUntilPointerUp = false;
-
-    PlayScreen(this.game, this.levelIndex) {
-        levelData = LevelLoader.loadLevel(levelIndex);
-        viewport = _createViewport(levelData, camera);
-        layerVisibilityStates = _buildInitialLayerVisibility(levelData);
-        spriteRuntimeStates = _createHiddenTemplateRuntimes(levelData);
-        layerRuntimeStates = _createLayerRuntimeStates(levelData);
-        _applyInitialCameraFromLevel();
-        viewport.update(
-            Gdx.graphics.getWidth().toDouble(),
-            Gdx.graphics.getHeight().toDouble(),
-            false,
-        );
-        _queueGameplaySpriteAssets();
+    final AppData appData = game.getAppData();
+    if (appData.phase == MatchPhase.waiting ||
+        appData.phase == MatchPhase.connecting) {
+      _submitDirection(appData, 'none');
+      game.setScreen(WaitingRoomScreen(game, levelIndex));
+      return;
     }
 
-    @override
-    void render(double delta) {
-        elapsedSeconds += math.max(0, math.min(delta, maxFrameSeconds));
-        final AppData appData = game.getAppData();
-        game.getAssetManager().update();
-
-        if (appData.phase == MatchPhase.waiting ||
-                appData.phase == MatchPhase.connecting) {
-            _equippedGrenadeSlot = null;
-            _suppressFireUntilPointerUp = false;
-            appData.sendInput(move: 'none', aimX: 0, aimY: 0, firing: false);
-            game.setScreen(WaitingRoomScreen(game, levelIndex));
-            return;
-        }
-
-        _handleGameplayInput(appData);
-        _updateCameraForGameplay(appData);
-
-        viewport.apply();
-        ScreenUtils.clear(levelData.backgroundColor);
-
-        final SpriteBatch batch = game.getBatch();
-        batch.begin();
-        levelRenderer.render(
-            levelData,
-            game.getAssetManager(),
-            batch,
-            camera,
-            spriteRuntimeStates,
-            layerVisibilityStates,
-            layerRuntimeStates,
-            viewport,
-        );
-        batch.end();
-
-        _renderWorldObjects(appData);
-        _renderHud(appData);
-
-        if (appData.localPendingAirstrike) {
-            _renderAirstrikeMinimap(appData);
-        } else {
-            _airstrikeMapRect = null;
-        }
-
-        if (appData.phase == MatchPhase.finished) {
-            _renderWinnerOverlay(appData);
-        }
+    if (Gdx.input.isKeyJustPressed(Input.keys.f3)) {
+      _showDebugOverlay = !_showDebugOverlay;
     }
 
-    @override
-    void resize(int width, int height) {
-        viewport.update(width.toDouble(), height.toDouble(), false);
-        _updateCameraForGameplay(game.getAppData());
+    _submitDirection(appData, _readCurrentDirection());
+    _updateAimAndShoot(appData);
+    _applyServerLayerTransforms(appData.layerTransforms);
+    _applyServerZoneTransforms(appData.zoneTransforms);
+    _updateCameraForGameplay(appData.localPlayer);
+
+    viewport.apply();
+    ScreenUtils.clear(levelData.backgroundColor);
+
+    final SpriteBatch batch = game.getBatch();
+    batch.begin();
+    levelRenderer.render(
+      levelData,
+      game.getAssetManager(),
+      batch,
+      camera,
+      spriteRuntimeStates,
+      layerVisibilityStates,
+      layerRuntimeStates,
+      viewport,
+    );
+    _renderGems(batch, appData.gems);
+    _renderPlayers(batch, appData.sortedPlayers, appData.playerId);
+    batch.end();
+    if (_showDebugOverlay) {
+      debugOverlay.render(
+        levelData,
+        camera,
+        true,
+        true,
+        zoneRuntimeStates,
+        viewport,
+      );
     }
+    _renderLocalPlayerHighlight();
+    _renderCrosshair();
+    _renderCombatHud(appData.localPlayer);
 
-    void _handleGameplayInput(AppData appData) {
-        final Vector3 mouseWorld = _mouseWorldPosition();
-        final MultiplayerPlayer? local = appData.localPlayer;
+    _renderLeaderboard(appData);
+    if (appData.phase == MatchPhase.finished) {
+      _renderWinnerOverlay(appData);
+    }
+  }
 
-        if (local == null) {
-            return;
-        }
+  @override
+  void resize(int width, int height) {
+    viewport.update(width.toDouble(), height.toDouble(), false);
+    _updateCameraForGameplay(game.getAppData().localPlayer);
+  }
 
-        if (appData.localPendingAirstrike) {
-            appData.sendInput(
-                move: 'none',
-                aimX: mouseWorld.x,
-                aimY: mouseWorld.y,
-                firing: false,
-            );
-            if (Gdx.input.justTouched()) {
-                final ui.Offset screenTouch = ui.Offset(
-                    Gdx.input.getX().toDouble(),
-                    Gdx.input.getY().toDouble(),
-                );
-                final ui.Offset? world = _airstrikeScreenToWorld(screenTouch);
-                if (world != null) {
-                    appData.sendAirstrikeTarget(world.dx, world.dy);
-                }
+  @override
+  void dispose() {
+    _submitDirection(game.getAppData(), 'none');
+    debugOverlay.dispose();
+  }
+
+  void _renderPlayers(
+    SpriteBatch batch,
+    List<MultiplayerPlayer> players,
+    String? localPlayerId,
+  ) {
+    _localPlayerHighlightCenter = null;
+    _localPlayerHighlightRadius = null;
+    final ui.Color previousBatchColor = batch.getColor();
+    bool usingRemotePlayerOpacity = false;
+    final List<MultiplayerPlayer> orderedPlayers =
+        List<MultiplayerPlayer>.from(players)
+          ..sort((MultiplayerPlayer a, MultiplayerPlayer b) {
+            final bool aIsLocal = a.id == localPlayerId;
+            final bool bIsLocal = b.id == localPlayerId;
+            if (aIsLocal == bIsLocal) {
+              return 0;
             }
-            return;
+            return aIsLocal ? 1 : -1;
+          });
+
+    for (final MultiplayerPlayer player in orderedPlayers) {
+      final _AnimatedSpriteFrame frame = _playerFrameFor(player);
+      final bool isLocalPlayer = player.id == localPlayerId;
+      if (!isLocalPlayer) {
+        if (!usingRemotePlayerOpacity) {
+          batch.setColor(1, 1, 1, remotePlayerOpacity);
+          usingRemotePlayerOpacity = true;
         }
-
-        if (appData.canControlAvatar) {
-            final String move = _readCurrentDirection();
-            _refreshEquippedGrenade(local);
-            final bool grenadeEquipped = _hasEquippedGrenade(local);
-            final bool justClicked = Gdx.input.justTouched();
-
-            if (_suppressFireUntilPointerUp && !Gdx.input.isTouchDown()) {
-                _suppressFireUntilPointerUp = false;
-            }
-
-            final bool firing =
-                    !grenadeEquipped &&
-                    !_suppressFireUntilPointerUp &&
-                    Gdx.input.isTouchDown();
-            appData.sendInput(
-                move: move,
-                aimX: mouseWorld.x,
-                aimY: mouseWorld.y,
-                firing: firing,
-            );
-
-            if (grenadeEquipped && justClicked) {
-                final int slot = _equippedGrenadeSlot!;
-                appData.sendUseSlotAction(slot);
-                _equippedGrenadeSlot = null;
-                _suppressFireUntilPointerUp = true;
-            }
-
-            if (Gdx.input.isKeyJustPressed(Input.keys.r)) {
-                appData.sendReloadAction();
-            }
-            if (Gdx.input.isKeyJustPressed(Input.keys.digit1)) {
-                _equippedGrenadeSlot = null;
-                appData.sendSelectPrimaryAction();
-            }
-            if (Gdx.input.isKeyJustPressed(Input.keys.g)) {
-                _equippedGrenadeSlot = null;
-                appData.sendDropPrimaryAction();
-            }
-            if (Gdx.input.isKeyJustPressed(Input.keys.e)) {
-                appData.sendDetonateDroneAction();
-            }
-            for (int slot = 2; slot <= 9; slot++) {
-                final int keycode = _digitKeyCode(slot);
-                if (keycode > 0 && Gdx.input.isKeyJustPressed(keycode)) {
-                    final InventorySlotState? slotState = _findSlot(
-                        local.inventorySlots,
-                        slot,
-                    );
-                    if (slotState != null &&
-                            slotState.type == 'grenade' &&
-                            slotState.count > 0) {
-                        _equippedGrenadeSlot = _equippedGrenadeSlot == slot ? null : slot;
-                    } else {
-                        _equippedGrenadeSlot = null;
-                        appData.sendUseSlotAction(slot);
-                    }
-                }
-            }
-            return;
-        }
-
-        if (local.spectator && Gdx.input.isKeyJustPressed(Input.keys.space)) {
-            appData.sendSpectateNextAction();
-        }
-    }
-
-    void _updateCameraForGameplay(AppData appData) {
-        final MultiplayerPlayer? local = appData.localPlayer;
-        if (local == null) {
-            _applyInitialCameraFromLevel();
-            return;
-        }
-
-        double targetX;
-        double targetY;
-
-        if (local.alive && !local.spectator) {
-            if (local.activeDroneId.isNotEmpty) {
-                final DroneState? drone = _findDrone(appData, local.activeDroneId);
-                if (drone != null) {
-                    targetX = drone.x + drone.width * 0.5;
-                    targetY = drone.y + drone.height * 0.5;
-                } else {
-                    targetX = local.x + local.width * 0.5;
-                    targetY = local.y + local.height * 0.5;
-                }
-            } else {
-                targetX = local.x + local.width * 0.5;
-                targetY = local.y + local.height * 0.5;
-            }
-        } else {
-            final MultiplayerPlayer? spectated = appData.spectatedPlayer;
-            if (spectated != null) {
-                targetX = spectated.x + spectated.width * 0.5;
-                targetY = spectated.y + spectated.height * 0.5;
-            } else {
-                targetX = levelData.worldWidth * 0.5;
-                targetY = levelData.worldHeight * 0.5;
-            }
-        }
-
-        final double worldW = math.max(1, levelData.worldWidth);
-        final double worldH = math.max(1, levelData.worldHeight);
-        final double halfW = math.max(1, viewport.worldWidth * camera.zoom * 0.5);
-        final double halfH = math.max(1, viewport.worldHeight * camera.zoom * 0.5);
-
-        camera.setPosition(
-            _clampCameraAxis(targetX, halfW, worldW),
-            _clampCameraAxis(targetY, halfH, worldH),
+      } else if (usingRemotePlayerOpacity) {
+        batch.setColor(previousBatchColor);
+        usingRemotePlayerOpacity = false;
+      }
+      _drawAnimatedSprite(
+        batch,
+        frame: frame,
+        worldX: player.x,
+        worldY: player.y,
+        width: player.width,
+        height: player.height,
+        flipX: frame.flipX,
+      );
+      if (isLocalPlayer) {
+        final ui.Rect dst = viewport.worldToScreenRect(
+          player.x,
+          player.y,
+          player.width,
+          player.height,
         );
-        camera.update();
-    }
-
-    double _clampCameraAxis(double target, double halfView, double worldSize) {
-        if (worldSize <= halfView * 2) {
-            return worldSize * 0.5;
-        }
-        return clampDouble(target, halfView, worldSize - halfView);
-    }
-
-    void _renderWorldObjects(AppData appData) {
-        final SpriteBatch batch = game.getBatch();
-        batch.begin();
-        _renderLoot(batch, appData.loot);
-        _renderProjectiles(batch, appData.projectiles);
-        _renderGrenades(batch, appData.grenades);
-        _renderDrones(batch, appData.drones);
-        _renderPlayers(batch, appData.players, appData.playerId);
-        _renderExplosions(batch, appData.explosions);
-        _renderAirstrikePlaceholders(batch, appData.airstrikeWarnings);
-        batch.end();
-
-        final ShapeRenderer shapes = game.getShapeRenderer();
-
-        shapes.begin(ShapeType.line);
-        _renderGrenadePreview(shapes, appData);
-        _renderStormCircle(shapes, appData.storm);
-        _renderAirstrikeWarnings(shapes, appData.airstrikeWarnings);
-        shapes.end();
-    }
-
-    void _renderPlayers(
-        SpriteBatch batch,
-        List<MultiplayerPlayer> players,
-        String? localPlayerId,
-    ) {
-        final TextureRegion? region = _fullTextureRegion(playerSpritePath);
-        if (region == null) {
-            return;
-        }
-        for (final MultiplayerPlayer player in players) {
-            if (!player.alive) {
-                continue;
-            }
-            batch.setColor(
-                player.id == localPlayerId ? playerLocalColor : playerEnemyColor,
-            );
-            final ui.Rect rect = viewport.worldToScreenRect(
-                player.x,
-                player.y,
-                player.width,
-                player.height,
-            );
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-            _drawPlayerWeapon(batch, player);
-        }
-    }
-
-    void _renderLoot(SpriteBatch batch, List<LootState> loot) {
-        for (final LootState item in loot) {
-            final String spritePath = item.kind == 'weapon'
-                    ? (weaponSpriteById[item.weaponId] ?? defaultWeaponSpritePath)
-                    : (consumableSpriteById[item.consumableType] ?? defaultWeaponSpritePath);
-            final TextureRegion? region = _fullTextureRegion(spritePath);
-            if (region == null) {
-                continue;
-            }
-            batch.setColor(
-                item.kind == 'weapon' ? lootWeaponColor : lootConsumableColor,
-            );
-            final ui.Rect rect = viewport.worldToScreenRect(
-                item.x - 6,
-                item.y - 6,
-                12,
-                12,
-            );
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _renderProjectiles(
-        SpriteBatch batch,
-        List<ProjectileState> projectiles,
-    ) {
-        for (final ProjectileState projectile in projectiles) {
-            final bool isRocket = projectile.kind == 'rocket';
-            final TextureRegion? region = _fullTextureRegion(
-                isRocket ? 'levels/media/escopeta.png' : defaultWeaponSpritePath,
-            );
-            if (region == null) {
-                continue;
-            }
-            final double radiusWorld = projectile.kind == 'rocket' ? 4 : 1.25;
-            final ui.Rect rect = viewport.worldToScreenRect(
-                projectile.x - radiusWorld,
-                projectile.y - radiusWorld,
-                radiusWorld * 2,
-                radiusWorld * 2,
-            );
-            batch.setColor(isRocket ? rocketColor : projectileColor);
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _renderGrenades(SpriteBatch batch, List<GrenadeState> grenades) {
-        final TextureRegion? region = _fullTextureRegion(defaultWeaponSpritePath);
-        if (region == null) {
-            return;
-        }
-        for (final GrenadeState grenade in grenades) {
-            final ui.Rect rect = viewport.worldToScreenRect(
-                grenade.x - 4,
-                grenade.y - 4,
-                8,
-                8,
-            );
-            batch.setColor(grenadeColor);
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _renderDrones(SpriteBatch batch, List<DroneState> drones) {
-        final TextureRegion? region = _fullTextureRegion(droneSpritePath);
-        if (region == null) {
-            return;
-        }
-        for (final DroneState drone in drones) {
-            final ui.Rect rect = viewport.worldToScreenRect(
-                drone.x,
-                drone.y,
-                drone.width,
-                drone.height,
-            );
-            batch.setColor(droneColor);
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _renderExplosions(
-        SpriteBatch batch,
-        List<ExplosionState> explosions,
-    ) {
-        final TextureRegion? region = _fullTextureRegion(defaultWeaponSpritePath);
-        if (region == null) {
-            return;
-        }
-        for (final ExplosionState explosion in explosions) {
-            final double radiusWorld = 22;
-            final ui.Rect rect = viewport.worldToScreenRect(
-                explosion.x - radiusWorld,
-                explosion.y - radiusWorld,
-                radiusWorld * 2,
-                radiusWorld * 2,
-            );
-            batch.setColor(explosionColor);
-            batch.drawRegion(region.texture, region.srcRect, rect);
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _renderStormCircle(ShapeRenderer shapes, StormState storm) {
-        shapes.setColor(stormColor);
-        final ui.Offset center = viewport.worldToScreenPoint(
-            storm.centerX,
-            storm.centerY,
+        _localPlayerHighlightCenter = ui.Offset(
+          dst.left + dst.width * frame.anchorX,
+          dst.top + dst.height * frame.anchorY,
         );
-        shapes.circle(center.dx, center.dy, _radiusToScreen(storm.radius), 72);
+        _localPlayerHighlightRadius =
+            math.max(dst.width, dst.height) * 0.5 + localPlayerRingPadding;
+      }
+    }
+    if (usingRemotePlayerOpacity) {
+      batch.setColor(previousBatchColor);
+    }
+  }
+
+  void _renderGems(SpriteBatch batch, List<MultiplayerGem> gems) {
+    for (final MultiplayerGem gem in gems) {
+      final LevelSprite template =
+          gemTemplateByType[gem.type] ?? gemTemplateByType['green']!;
+      final _AnimatedSpriteFrame frame = _frameFromTemplate(template);
+      _drawAnimatedSprite(
+        batch,
+        frame: frame,
+        worldX: gem.x,
+        worldY: gem.y,
+        width: gem.width,
+        height: gem.height,
+      );
+    }
+  }
+
+  void _drawAnimatedSprite(
+    SpriteBatch batch, {
+    required _AnimatedSpriteFrame frame,
+    required double worldX,
+    required double worldY,
+    required double width,
+    required double height,
+    bool flipX = false,
+  }) {
+    final AssetManager assets = game.getAssetManager();
+    if (!assets.isLoaded(frame.texturePath, Texture)) {
+      return;
     }
 
-    void _renderAirstrikeWarnings(
-        ShapeRenderer shapes,
-        List<AirstrikeWarningState> warnings,
-    ) {
-        for (final AirstrikeWarningState warning in warnings) {
-            shapes.setColor(warningColor);
-            final ui.Offset center = viewport.worldToScreenPoint(
-                warning.x,
-                warning.y,
-            );
-            shapes.circle(center.dx, center.dy, _radiusToScreen(warning.radius), 60);
-        }
+    final ui.Rect dst = viewport.worldToScreenRect(
+      worldX,
+      worldY,
+      width,
+      height,
+    );
+    final Texture texture = assets.get(frame.texturePath, Texture);
+    final ui.Rect src = _frameSourceRect(
+      texture,
+      frame.frameWidth,
+      frame.frameHeight,
+      frame.frameIndex,
+    );
+    batch.drawRegion(texture, src, dst, flipX: flipX);
+  }
+
+  void _renderLocalPlayerHighlight() {
+    final ui.Offset? center = _localPlayerHighlightCenter;
+    final double? radius = _localPlayerHighlightRadius;
+    if (center == null || radius == null) {
+      return;
+    }
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.line);
+    shapes.setColor(localPlayerColor);
+    shapes.circle(center.dx, center.dy, radius, 24);
+    shapes.setColor(colorValueOf('FFE07A88'));
+    shapes.circle(center.dx, center.dy, math.max(4, radius - 3), 24);
+    shapes.end();
+  }
+
+  void _updateAimAndShoot(AppData appData) {
+    _crosshair = ui.Offset(
+      clampDouble(
+        Gdx.input.getX().toDouble(),
+        0,
+        Gdx.graphics.getWidth().toDouble(),
+      ),
+      clampDouble(
+        Gdx.input.getY().toDouble(),
+        0,
+        Gdx.graphics.getHeight().toDouble(),
+      ),
+    );
+
+    if (!(Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Input.keys.space))) {
+      return;
+    }
+    final ui.Offset target = _screenToWorld(_crosshair.dx, _crosshair.dy);
+    appData.shootAt(target.dx, target.dy);
+  }
+
+  ui.Offset _screenToWorld(double sx, double sy) {
+    final double viewW = viewport.worldWidth * camera.zoom;
+    final double viewH = viewport.worldHeight * camera.zoom;
+    final double left = camera.x - viewW * 0.5;
+    final double top = camera.y - viewH * 0.5;
+    return ui.Offset(
+      left + (sx / viewport.screenWidth) * viewW,
+      top + (sy / viewport.screenHeight) * viewH,
+    );
+  }
+
+  void _renderCrosshair() {
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.line);
+    shapes.setColor(colorValueOf('FFFFFF'));
+    shapes.circle(_crosshair.dx, _crosshair.dy, 11, 20);
+    shapes.line(_crosshair.dx - 17, _crosshair.dy, _crosshair.dx - 8, _crosshair.dy);
+    shapes.line(_crosshair.dx + 8, _crosshair.dy, _crosshair.dx + 17, _crosshair.dy);
+    shapes.line(_crosshair.dx, _crosshair.dy - 17, _crosshair.dx, _crosshair.dy - 8);
+    shapes.line(_crosshair.dx, _crosshair.dy + 8, _crosshair.dx, _crosshair.dy + 17);
+    shapes.end();
+  }
+
+  void _renderCombatHud(MultiplayerPlayer? localPlayer) {
+    if (localPlayer == null) {
+      return;
     }
 
-    void _renderGrenadePreview(ShapeRenderer shapes, AppData appData) {
-        if (appData.localPendingAirstrike) {
-            return;
-        }
-        if (!appData.canControlAvatar) {
-            return;
-        }
-        final MultiplayerPlayer? local = appData.localPlayer;
-        if (local == null || !_hasEquippedGrenade(local)) {
-            return;
-        }
+    final double screenW = Gdx.graphics.getWidth().toDouble();
+    final double screenH = Gdx.graphics.getHeight().toDouble();
+    final double slotsWidth = hudSlotSize * 5 + hudSlotGap * 4;
+    final double x = (screenW - leaderboardWidth - slotsWidth) * 0.5;
+    final double y = screenH - 56;
 
-        final Vector3 mouseWorld = _mouseWorldPosition();
-        final ui.Offset target = _clampedGrenadeTargetWorld(
-            local,
-            mouseWorld.x,
-            mouseWorld.y,
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.filled);
+    shapes.setColor(hudPanelColor);
+    shapes.rect(x - 14, y - 64, slotsWidth + 28, 112);
+    shapes.end();
+
+    shapes.begin(ShapeType.line);
+    shapes.setColor(hudStrokeColor);
+    shapes.rect(x - 14, y - 64, slotsWidth + 28, 112);
+    for (int i = 0; i < 5; i++) {
+      final double slotX = x + i * (hudSlotSize + hudSlotGap);
+      shapes.rect(slotX, y, hudSlotSize, hudSlotSize);
+    }
+
+    final double hpRatio = clampDouble(
+      localPlayer.maxHealth <= 0 ? 0 : localPlayer.health / localPlayer.maxHealth,
+      0,
+      1,
+    );
+    final double shieldRatio = clampDouble(
+      localPlayer.maxShield <= 0 ? 0 : localPlayer.shield / localPlayer.maxShield,
+      0,
+      1,
+    );
+    const double barW = 220;
+    const double barH = 10;
+    final double barX = x;
+    final double hpY = y - 40;
+    final double shY = y - 22;
+    shapes.setColor(colorValueOf('0B121A'));
+    shapes.rect(barX, hpY, barW, barH);
+    shapes.rect(barX, shY, barW, barH);
+    shapes.setColor(hpColor);
+    shapes.rect(barX, hpY, barW * hpRatio, barH);
+    shapes.setColor(shieldColor);
+    shapes.rect(barX, shY, barW * shieldRatio, barH);
+    shapes.setColor(hudStrokeColor);
+    shapes.rect(barX, hpY, barW, barH);
+    shapes.rect(barX, shY, barW, barH);
+    shapes.end();
+  }
+
+  void _renderLeaderboard(AppData appData) {
+    final double screenWidth = Gdx.graphics.getWidth().toDouble();
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    shapes.begin(ShapeType.filled);
+    shapes.setColor(panelFill);
+    shapes.rect(
+      screenWidth - leaderboardWidth,
+      0,
+      leaderboardWidth,
+      screenHeight,
+    );
+    shapes.end();
+
+    shapes.begin(ShapeType.line);
+    shapes.setColor(panelStroke);
+    shapes.rect(
+      screenWidth - leaderboardWidth,
+      0,
+      leaderboardWidth,
+      screenHeight,
+    );
+    shapes.end();
+
+    final SpriteBatch batch = game.getBatch();
+    final BitmapFont font = game.getFont();
+    batch.begin();
+
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Leaderboard',
+      screenWidth - leaderboardWidth + leaderboardPadding,
+      34,
+      1.45,
+      titleColor,
+    );
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Remaining gems: ${appData.remainingGems}',
+      screenWidth - leaderboardWidth + leaderboardPadding,
+      64,
+      1.0,
+      dimTextColor,
+    );
+
+    PlayerListRenderer.render(
+      batch: batch,
+      font: font,
+      layout: layout,
+      players: appData.sortedPlayers,
+      localPlayerId: appData.playerId,
+      left: screenWidth - leaderboardWidth + leaderboardPadding,
+      right: screenWidth - leaderboardPadding,
+      startY: leaderboardStartY,
+      textColor: textColor,
+      localPlayerColor: localPlayerColor,
+      drawLeftAlignedText: _drawLeftAlignedText,
+      drawRightAlignedText: _drawRightAlignedText,
+      style: PlayerListRenderer.gameplayStyle,
+    );
+
+    if (appData.sortedPlayers.isEmpty) {
+      _drawLeftAlignedText(
+        batch,
+        font,
+        'Waiting for players...',
+        screenWidth - leaderboardWidth + leaderboardPadding,
+        leaderboardStartY,
+        1.0,
+        dimTextColor,
+      );
+    }
+
+    batch.end();
+  }
+
+  void _renderWinnerOverlay(AppData appData) {
+    final ShapeRenderer shapes = game.getShapeRenderer();
+    final double screenWidth = Gdx.graphics.getWidth().toDouble();
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
+    shapes.begin(ShapeType.filled);
+    shapes.setColor(winnerOverlayColor);
+    shapes.rect(0, 0, screenWidth, screenHeight);
+    shapes.end();
+
+    final MultiplayerPlayer? winner = appData.sortedPlayers.isEmpty
+        ? null
+        : appData.sortedPlayers.first;
+    final String title = winner == null
+        ? 'Match Finished'
+        : '${winner.name} wins with ${winner.score}';
+
+    final SpriteBatch batch = game.getBatch();
+    final BitmapFont font = game.getFont();
+    batch.begin();
+    _drawCenteredText(
+      batch,
+      font,
+      title,
+      screenHeight * 0.46,
+      2.2,
+      titleColor,
+      maxWidth: screenWidth - leaderboardWidth,
+    );
+    _drawCenteredText(
+      batch,
+      font,
+      'All gems were collected.',
+      screenHeight * 0.53,
+      1.15,
+      textColor,
+      maxWidth: screenWidth - leaderboardWidth,
+    );
+    batch.end();
+  }
+
+  void _submitDirection(AppData appData, String direction) {
+    if (_lastSubmittedDirection == direction) {
+      return;
+    }
+    _lastSubmittedDirection = direction;
+    appData.updateMovementDirection(direction);
+  }
+
+  String _readCurrentDirection() {
+    final bool left =
+        Gdx.input.isKeyPressed(Input.keys.left) ||
+        Gdx.input.isKeyPressed(Input.keys.a);
+    final bool right =
+        Gdx.input.isKeyPressed(Input.keys.right) ||
+        Gdx.input.isKeyPressed(Input.keys.d);
+    final bool up =
+        Gdx.input.isKeyPressed(Input.keys.up) ||
+        Gdx.input.isKeyPressed(Input.keys.w);
+    final bool down =
+        Gdx.input.isKeyPressed(Input.keys.down) ||
+        Gdx.input.isKeyPressed(Input.keys.s);
+
+    if (up && left) {
+      return 'upLeft';
+    }
+    if (up && right) {
+      return 'upRight';
+    }
+    if (down && left) {
+      return 'downLeft';
+    }
+    if (down && right) {
+      return 'downRight';
+    }
+    if (up) {
+      return 'up';
+    }
+    if (down) {
+      return 'down';
+    }
+    if (left) {
+      return 'left';
+    }
+    if (right) {
+      return 'right';
+    }
+    return 'none';
+  }
+
+  void _applyInitialCameraFromLevel() {
+    final double centerX = levelData.viewportX + levelData.viewportWidth * 0.5;
+    final double centerY = levelData.viewportY + levelData.viewportHeight * 0.5;
+    camera.setPosition(centerX, centerY);
+    camera.update();
+  }
+
+  void _updateCameraForGameplay(MultiplayerPlayer? player) {
+    if (player == null) {
+      camera.update();
+      return;
+    }
+
+    final double worldW = math.max(1, levelData.worldWidth);
+    final double worldH = math.max(1, levelData.worldHeight);
+    final double viewW = math.max(1, viewport.worldWidth);
+    final double viewH = math.max(1, viewport.worldHeight);
+    final double halfW = viewW * 0.5;
+    final double halfH = viewH * 0.5;
+    final double targetX = clampDouble(
+      player.x + player.width * 0.5,
+      halfW,
+      worldW - halfW,
+    );
+    final double targetY = clampDouble(
+      player.y + player.height * 0.5,
+      halfH,
+      worldH - halfH,
+    );
+
+    camera.setPosition(targetX, targetY);
+    camera.update();
+  }
+
+  Viewport _createViewport(LevelData data, OrthographicCamera targetCamera) {
+    switch (data.viewportAdaptation) {
+      case 'expand':
+        return ExtendViewport(
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
-        final ui.Offset center = viewport.worldToScreenPoint(target.dx, target.dy);
-        shapes.setColor(grenadePreviewOuterColor);
-        shapes.circle(
-            center.dx,
-            center.dy,
-            _radiusToScreen(grenadeOuterRadius),
-            42,
+      case 'stretch':
+        return StretchViewport(
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
-        shapes.setColor(grenadePreviewInnerColor);
-        shapes.circle(
-            center.dx,
-            center.dy,
-            _radiusToScreen(grenadeInnerRadius),
-            26,
-        );
-    }
-
-    void _renderAirstrikePlaceholders(
-        SpriteBatch batch,
-        List<AirstrikeWarningState> warnings,
-    ) {
-        final TextureRegion? plane = _fullTextureRegion(airstrikeSpritePath);
-        final TextureRegion? bomb = _fullTextureRegion(defaultWeaponSpritePath);
-        if (plane == null || bomb == null) {
-            return;
-        }
-        for (final AirstrikeWarningState warning in warnings) {
-            final ui.Offset center = viewport.worldToScreenPoint(
-                warning.x,
-                warning.y,
-            );
-            final double radius = _radiusToScreen(warning.radius);
-            final double progress = clampDouble(
-                1 - (warning.secondsToImpact / 5.0),
-                0,
-                1,
-            );
-            final double planeX = center.dx - radius + (radius * 2 * progress);
-            final double planeY = center.dy - radius - 18;
-            final double bombY = planeY + (radius + 18) * progress;
-
-            batch.setColor(warningColor);
-            batch.drawRegion(
-                plane.texture,
-                plane.srcRect,
-                ui.Rect.fromLTWH(planeX - 10, planeY - 4, 20, 8),
-            );
-            batch.drawRegion(
-                bomb.texture,
-                bomb.srcRect,
-                ui.Rect.fromLTWH(planeX - 2, bombY - 2, 4, 4),
-            );
-            batch.setColor(const ui.Color(0xFFFFFFFF));
-        }
-    }
-
-    void _drawPlayerWeapon(SpriteBatch batch, MultiplayerPlayer player) {
-        final String weaponId = player.primaryWeapon.trim();
-        if (weaponId.isEmpty) {
-            return;
-        }
-        final String weaponPath =
-                weaponSpriteById[weaponId] ?? defaultWeaponSpritePath;
-        final TextureRegion? region = _fullTextureRegion(weaponPath);
-        if (region == null) {
-            return;
-        }
-
-        final double cx = player.x + player.width * 0.5;
-        final double cy = player.y + player.height * 0.5;
-        final double dx = player.aimX - cx;
-        final double dy = player.aimY - cy;
-        final double len = math.sqrt(dx * dx + dy * dy);
-        final double ux = len > 0.0001 ? dx / len : 1;
-        final double uy = len > 0.0001 ? dy / len : 0;
-
-        const double holdDistance = 8;
-        const double weaponWidth = 12;
-        const double weaponHeight = 6;
-
-        final double wx = cx + ux * holdDistance;
-        final double wy = cy + uy * holdDistance;
-        final ui.Rect weaponRect = viewport.worldToScreenRect(
-            wx - weaponWidth * 0.5,
-            wy - weaponHeight * 0.5,
-            weaponWidth,
-            weaponHeight,
-        );
-        batch.drawRegion(region.texture, region.srcRect, weaponRect);
-    }
-
-    TextureRegion? _fullTextureRegion(String texturePath) {
-        final AssetManager assets = game.getAssetManager();
-        if (!assets.isLoaded(texturePath, Texture)) {
-            assets.load(texturePath, Texture);
-            return null;
-        }
-        final Texture texture = assets.get(texturePath, Texture);
-        return TextureRegion(
-            texture,
-            ui.Rect.fromLTWH(
-                0,
-                0,
-                texture.width.toDouble(),
-                texture.height.toDouble(),
-            ),
+      case 'letterbox':
+      default:
+        return FitViewport(
+          data.viewportWidth,
+          data.viewportHeight,
+          targetCamera,
         );
     }
+  }
 
-    void _queueGameplaySpriteAssets() {
-        final AssetManager assets = game.getAssetManager();
-        final Set<String> paths = <String>{
-            playerSpritePath,
-            defaultWeaponSpritePath,
-            droneSpritePath,
-            airstrikeSpritePath,
-            ...weaponSpriteById.values,
-            ...consumableSpriteById.values,
-        };
-        for (final String path in paths) {
-            if (!assets.isLoaded(path, Texture)) {
-                assets.load(path, Texture);
-            }
-        }
+  List<bool> _buildInitialLayerVisibility(LevelData data) {
+    return List<bool>.generate(
+      data.layers.size,
+      (int index) => data.layers.get(index).visible,
+    );
+  }
+
+  Array<SpriteRuntimeState> _createHiddenTemplateRuntimes(LevelData data) {
+    final Array<SpriteRuntimeState> runtimes = Array<SpriteRuntimeState>();
+    for (int i = 0; i < data.sprites.size; i++) {
+      final LevelSprite sprite = data.sprites.get(i);
+      runtimes.add(
+        SpriteRuntimeState(
+          sprite.frameIndex,
+          0,
+          0,
+          sprite.x,
+          sprite.y,
+          false,
+          sprite.flipX,
+          sprite.flipY,
+          math.max(1, sprite.width.round()),
+          math.max(1, sprite.height.round()),
+          sprite.texturePath,
+          sprite.animationId,
+        ),
+      );
+    }
+    return runtimes;
+  }
+
+  Array<RuntimeTransform> _createLayerRuntimeStates(LevelData data) {
+    final Array<RuntimeTransform> runtimes = Array<RuntimeTransform>();
+    for (int i = 0; i < data.layers.size; i++) {
+      final LevelLayer layer = data.layers.get(i);
+      runtimes.add(RuntimeTransform(layer.x, layer.y));
+    }
+    return runtimes;
+  }
+
+  Array<RuntimeTransform> _createZoneRuntimeStates(LevelData data) {
+    final Array<RuntimeTransform> runtimes = Array<RuntimeTransform>();
+    for (int i = 0; i < data.zones.size; i++) {
+      final LevelZone zone = data.zones.get(i);
+      runtimes.add(RuntimeTransform(zone.x, zone.y));
+    }
+    return runtimes;
+  }
+
+  void _applyServerLayerTransforms(List<TransformSnapshot> transforms) {
+    for (final TransformSnapshot transform in transforms) {
+      if (transform.index < 0 || transform.index >= layerRuntimeStates.size) {
+        continue;
+      }
+      final RuntimeTransform runtime = layerRuntimeStates.get(transform.index);
+      runtime.x = transform.x;
+      runtime.y = transform.y;
+    }
+  }
+
+  void _applyServerZoneTransforms(List<TransformSnapshot> transforms) {
+    for (final TransformSnapshot transform in transforms) {
+      if (transform.index < 0 || transform.index >= zoneRuntimeStates.size) {
+        continue;
+      }
+      final RuntimeTransform runtime = zoneRuntimeStates.get(transform.index);
+      runtime.x = transform.x;
+      runtime.y = transform.y;
+    }
+  }
+
+  LevelSprite _findPlayerTemplate(LevelData data) {
+    for (final LevelSprite sprite in data.sprites.iterable()) {
+      if (normalize(sprite.type).contains('hero')) {
+        return sprite;
+      }
+    }
+    return data.sprites.first();
+  }
+
+  Map<String, LevelSprite> _buildGemTemplates(LevelData data) {
+    final Map<String, LevelSprite> templates = <String, LevelSprite>{};
+    for (final LevelSprite sprite in data.sprites.iterable()) {
+      final String type = normalize(sprite.type);
+      if (type.contains('gem purple')) {
+        templates['purple'] = sprite;
+      } else if (type.contains('gem yellow')) {
+        templates['yellow'] = sprite;
+      } else if (type.contains('gem green')) {
+        templates['green'] = sprite;
+      } else if (type.contains('gem blue')) {
+        templates['blue'] = sprite;
+      }
+    }
+    return templates;
+  }
+
+  _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
+    final String facing = player.facing;
+    final bool moving = player.moving;
+    final int walkStep = moving ? ((elapsedSeconds * 9).floor() % 2) : 0;
+    final String animationName;
+
+    switch (facing) {
+      case 'left':
+        animationName = walkStep == 0 ? 'soldier left' : 'soldier down-left';
+        break;
+      case 'upLeft':
+        animationName = walkStep == 0 ? 'soldier up' : 'soldier left';
+        break;
+      case 'upRight':
+        animationName = walkStep == 0 ? 'soldier up' : 'soldier right';
+        break;
+      case 'right':
+        animationName = walkStep == 0 ? 'soldier right' : 'soldier down-right';
+        break;
+      case 'up':
+        animationName = 'soldier up';
+        break;
+      case 'downLeft':
+        animationName = 'soldier down-left';
+        break;
+      case 'downRight':
+        animationName = 'soldier down-right';
+        break;
+      case 'down':
+      default:
+        animationName = walkStep == 0 ? 'soldier down' : 'soldier down-right';
+        break;
     }
 
-    void _renderHud(AppData appData) {
-        final MultiplayerPlayer? local = appData.localPlayer;
-        final double screenH = Gdx.graphics.getHeight().toDouble();
+    return _frameFromTemplate(
+      playerTemplate,
+      animationName: animationName,
+      flipX: false,
+    );
+  }
 
-        final ShapeRenderer shapes = game.getShapeRenderer();
-        shapes.begin(ShapeType.filled);
-        shapes.setColor(hudPanelColor);
-        shapes.rect(0, 0, hudPanelWidth, screenH);
-        shapes.end();
-
-        shapes.begin(ShapeType.line);
-        shapes.setColor(hudStrokeColor);
-        shapes.rect(0, 0, hudPanelWidth, screenH);
-        shapes.end();
-
-        final SpriteBatch batch = game.getBatch();
-        final BitmapFont font = game.getFont();
-        batch.begin();
-
-        _drawText(batch, font, 'Battle Royale', hudPadding, 32, 1.35, hudTextColor);
-        _drawText(
-            batch,
-            font,
-            'Phase: ${_phaseLabel(appData.phase)}',
-            hudPadding,
-            60,
-            1.0,
-            hudDimTextColor,
-        );
-        _drawText(
-            batch,
-            font,
-            'Alive: ${appData.aliveCount}/${appData.players.length}',
-            hudPadding,
-            84,
-            1.0,
-            hudTextColor,
-        );
-
-        if (local != null) {
-            _drawText(
-                batch,
-                font,
-                'HP: ${local.health.round()}/${local.maxHealth.round()}',
-                hudPadding,
-                118,
-                1.0,
-                hudTextColor,
-            );
-            _drawText(
-                batch,
-                font,
-                'Weapon: ${local.primaryWeapon.isEmpty ? 'None' : local.primaryWeapon}',
-                hudPadding,
-                142,
-                1.0,
-                hudTextColor,
-            );
-            _drawText(
-                batch,
-                font,
-                'Ammo: ${local.ammoInMag}/${local.ammoCapacity}',
-                hudPadding,
-                166,
-                1.0,
-                hudTextColor,
-            );
-            if (local.reloading) {
-                _drawText(
-                    batch,
-                    font,
-                    'Reloading ${_msToSec(local.reloadRemainingMs)}s',
-                    hudPadding,
-                    188,
-                    0.95,
-                    hudDimTextColor,
-                );
-            }
-            if (local.activeDroneId.isNotEmpty) {
-                _drawText(
-                    batch,
-                    font,
-                    'Drone active',
-                    hudPadding,
-                    210,
-                    0.95,
-                    droneColor,
-                );
-            }
-            if (local.pendingAirstrike) {
-                _drawText(
-                    batch,
-                    font,
-                    'Airstrike: choose target',
-                    hudPadding,
-                    232,
-                    0.95,
-                    warningColor,
-                );
-            }
-
-            _drawText(batch, font, 'Consumables', hudPadding, 266, 1.0, hudTextColor);
-            double slotY = 290;
-            for (int slot = 2; slot <= 9; slot++) {
-                final InventorySlotState? state = _findSlot(local.inventorySlots, slot);
-                final String text = state == null
-                        ? '$slot: -'
-                        : '$slot: ${state.type} x${state.count}${_equippedGrenadeSlot == slot ? ' [equipped]' : ''}';
-                _drawText(batch, font, text, hudPadding, slotY, 0.9, hudDimTextColor);
-                slotY += 22;
-            }
-        }
-
-        _drawText(
-            batch,
-            font,
-            'Storm: ${appData.storm.stage}',
-            hudPadding,
-            screenH - 78,
-            0.95,
-            hudTextColor,
-        );
-        _drawText(
-            batch,
-            font,
-            'Radius: ${appData.storm.radius.toStringAsFixed(1)}',
-            hudPadding,
-            screenH - 56,
-            0.95,
-            hudTextColor,
-        );
-        _drawText(
-            batch,
-            font,
-            'Damage/s: ${appData.storm.damagePerSecond.toStringAsFixed(1)}',
-            hudPadding,
-            screenH - 34,
-            0.95,
-            hudTextColor,
-        );
-
-        batch.end();
+  _AnimatedSpriteFrame _frameFromTemplate(
+    LevelSprite template, {
+    String? animationName,
+    bool flipX = false,
+  }) {
+    final String? animationId = animationName == null
+        ? template.animationId
+        : _findAnimationIdByName(animationName);
+    if (animationId == null || animationId.isEmpty) {
+      return _AnimatedSpriteFrame(
+        texturePath: template.texturePath,
+        frameWidth: math.max(1, template.width.round()),
+        frameHeight: math.max(1, template.height.round()),
+        frameIndex: math.max(0, template.frameIndex),
+        anchorX: template.anchorX,
+        anchorY: template.anchorY,
+        flipX: flipX,
+      );
     }
 
-    void _renderWinnerOverlay(AppData appData) {
-        final ShapeRenderer shapes = game.getShapeRenderer();
-        final double screenW = Gdx.graphics.getWidth().toDouble();
-        final double screenH = Gdx.graphics.getHeight().toDouble();
-
-        shapes.begin(ShapeType.filled);
-        shapes.setColor(winnerOverlayColor);
-        shapes.rect(0, 0, screenW, screenH);
-        shapes.end();
-
-        final SpriteBatch batch = game.getBatch();
-        final BitmapFont font = game.getFont();
-        batch.begin();
-        _drawCenteredText(
-            batch,
-            font,
-            appData.winnerName.isEmpty
-                    ? 'No winner'
-                    : 'Winner: ${appData.winnerName}',
-            screenH * 0.45,
-            2.0,
-            hudTextColor,
-        );
-        _drawCenteredText(
-            batch,
-            font,
-            'Back to lobby in ${appData.returnToLobbySeconds}s',
-            screenH * 0.53,
-            1.1,
-            hudDimTextColor,
-        );
-        batch.end();
+    final AnimationClip? clip = levelData.animationClips.get(animationId);
+    if (clip == null) {
+      return _AnimatedSpriteFrame(
+        texturePath: template.texturePath,
+        frameWidth: math.max(1, template.width.round()),
+        frameHeight: math.max(1, template.height.round()),
+        frameIndex: math.max(0, template.frameIndex),
+        anchorX: template.anchorX,
+        anchorY: template.anchorY,
+        flipX: flipX,
+      );
     }
 
-    void _renderAirstrikeMinimap(AppData appData) {
-        final double screenW = Gdx.graphics.getWidth().toDouble();
-        final double screenH = Gdx.graphics.getHeight().toDouble();
+    final int start = math.max(0, clip.startFrame);
+    final int end = math.max(start, clip.endFrame);
+    final int span = math.max(1, end - start + 1);
+    final double fps = clip.fps.isFinite && clip.fps > 0 ? clip.fps : 8;
+    final int offset = ((elapsedSeconds * fps).floor()) % span;
+    final int frameIndex = start + offset;
+    final FrameRig? frameRig = clip.frameRigs.get(frameIndex);
+    return _AnimatedSpriteFrame(
+      texturePath: clip.texturePath ?? template.texturePath,
+      frameWidth: clip.frameWidth > 0
+          ? clip.frameWidth
+          : math.max(1, template.width.round()),
+      frameHeight: clip.frameHeight > 0
+          ? clip.frameHeight
+          : math.max(1, template.height.round()),
+      frameIndex: frameIndex,
+      anchorX: frameRig?.anchorX ?? clip.anchorX,
+      anchorY: frameRig?.anchorY ?? clip.anchorY,
+      flipX: flipX,
+    );
+  }
 
-        final ui.Rect mapRect = _computeAirstrikeMapRect(screenW, screenH, appData);
-        _airstrikeMapRect = mapRect;
-
-        final ShapeRenderer shapes = game.getShapeRenderer();
-        shapes.begin(ShapeType.filled);
-        shapes.setColor(airstrikeOverlayColor);
-        shapes.rect(0, 0, screenW, screenH);
-        shapes.setColor(airstrikeMapFill);
-        shapes.rect(mapRect.left, mapRect.top, mapRect.width, mapRect.height);
-
-        for (final MultiplayerPlayer player in appData.players) {
-            if (!player.alive) {
-                continue;
-            }
-            final ui.Offset p = _worldToAirstrikePoint(
-                appData,
-                mapRect,
-                player.x + player.width * 0.5,
-                player.y + player.height * 0.5,
-            );
-            shapes.setColor(
-                player.id == appData.playerId
-                        ? airstrikeLocalPoint
-                        : airstrikeEnemyPoint,
-            );
-            shapes.rect(p.dx - 3, p.dy - 3, 6, 6);
-        }
-        shapes.end();
-
-        shapes.begin(ShapeType.line);
-        shapes.setColor(airstrikeMapStroke);
-        shapes.rect(mapRect.left, mapRect.top, mapRect.width, mapRect.height);
-        shapes.end();
-
-        final SpriteBatch batch = game.getBatch();
-        final BitmapFont font = game.getFont();
-        batch.begin();
-        _drawCenteredText(
-            batch,
-            font,
-            'AIRSTRIKE TARGET',
-            mapRect.top - 20,
-            1.25,
-            hudTextColor,
-        );
-        _drawCenteredText(
-            batch,
-            font,
-            'Click on the map to confirm',
-            mapRect.bottom + 26,
-            1.0,
-            hudDimTextColor,
-        );
-        batch.end();
+  String? _findAnimationIdByName(String animationName) {
+    final String normalized = normalize(animationName);
+    for (final MapEntry<String, AnimationClip> entry
+        in levelData.animationClips.entries()) {
+      if (normalize(entry.value.name) == normalized) {
+        return entry.key;
+      }
     }
+    return null;
+  }
 
-    ui.Rect _computeAirstrikeMapRect(
-        double screenW,
-        double screenH,
-        AppData appData,
-    ) {
-        final double worldW = math.max(
-            1,
-            appData.worldWidth > 0 ? appData.worldWidth : levelData.worldWidth,
-        );
-        final double worldH = math.max(
-            1,
-            appData.worldHeight > 0 ? appData.worldHeight : levelData.worldHeight,
-        );
-        final double maxW = screenW * 0.82;
-        final double maxH = screenH * 0.76;
-        final double worldAspect = worldW / worldH;
-        double mapW = maxW;
-        double mapH = mapW / worldAspect;
-        if (mapH > maxH) {
-            mapH = maxH;
-            mapW = mapH * worldAspect;
-        }
-        return ui.Rect.fromLTWH(
-            (screenW - mapW) * 0.5,
-            (screenH - mapH) * 0.5,
-            mapW,
-            mapH,
-        );
-    }
+  ui.Rect _frameSourceRect(
+    Texture texture,
+    int frameWidth,
+    int frameHeight,
+    int frameIndex,
+  ) {
+    final int safeWidth = math.max(1, frameWidth);
+    final int safeHeight = math.max(1, frameHeight);
+    final int cols = math.max(1, texture.width ~/ safeWidth);
+    final int rows = math.max(1, texture.height ~/ safeHeight);
+    final int total = cols * rows;
+    final int safeFrame = clampInt(frameIndex, 0, total - 1);
+    final int srcCol = safeFrame % cols;
+    final int srcRow = safeFrame ~/ cols;
+    return ui.Rect.fromLTWH(
+      (srcCol * safeWidth).toDouble(),
+      (srcRow * safeHeight).toDouble(),
+      safeWidth.toDouble(),
+      safeHeight.toDouble(),
+    );
+  }
 
-    ui.Offset? _airstrikeScreenToWorld(ui.Offset screenPoint) {
-        final ui.Rect? mapRect = _airstrikeMapRect;
-        if (mapRect == null || !mapRect.contains(screenPoint)) {
-            return null;
-        }
-        final AppData appData = game.getAppData();
-        final double worldW = math.max(
-            1,
-            appData.worldWidth > 0 ? appData.worldWidth : levelData.worldWidth,
-        );
-        final double worldH = math.max(
-            1,
-            appData.worldHeight > 0 ? appData.worldHeight : levelData.worldHeight,
-        );
-        final double nx = (screenPoint.dx - mapRect.left) / mapRect.width;
-        final double ny = (screenPoint.dy - mapRect.top) / mapRect.height;
-        return ui.Offset(nx * worldW, ny * worldH);
-    }
+  void _drawCenteredText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double y,
+    double scale,
+    ui.Color color, {
+    double? maxWidth,
+  }) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    layout.setText(font, text);
+    final double width =
+        maxWidth ?? Gdx.graphics.getWidth().toDouble() - leaderboardWidth;
+    final double x = (width - layout.width) * 0.5;
+    font.draw(batch, layout, x, y);
+    font.getData().setScale(1);
+  }
 
-    ui.Offset _worldToAirstrikePoint(
-        AppData appData,
-        ui.Rect mapRect,
-        double worldX,
-        double worldY,
-    ) {
-        final double worldW = math.max(
-            1,
-            appData.worldWidth > 0 ? appData.worldWidth : levelData.worldWidth,
-        );
-        final double worldH = math.max(
-            1,
-            appData.worldHeight > 0 ? appData.worldHeight : levelData.worldHeight,
-        );
-        return ui.Offset(
-            mapRect.left + (worldX / worldW) * mapRect.width,
-            mapRect.top + (worldY / worldH) * mapRect.height,
-        );
-    }
+  void _drawLeftAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double x,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    font.drawText(text, x, y);
+    font.getData().setScale(1);
+  }
 
-    double _radiusToScreen(double worldRadius) {
-        final double sx =
-                viewport.screenWidth / (viewport.worldWidth * camera.zoom);
-        final double sy =
-                viewport.screenHeight / (viewport.worldHeight * camera.zoom);
-        return worldRadius * ((sx + sy) * 0.5);
-    }
+  void _drawRightAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double right,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    layout.setText(font, text);
+    font.draw(batch, layout, right - layout.width, y);
+    font.getData().setScale(1);
+  }
+}
 
-    String _readCurrentDirection() {
-        final bool left =
-                Gdx.input.isKeyPressed(Input.keys.left) ||
-                Gdx.input.isKeyPressed(Input.keys.a);
-        final bool right =
-                Gdx.input.isKeyPressed(Input.keys.right) ||
-                Gdx.input.isKeyPressed(Input.keys.d);
-        final bool up =
-                Gdx.input.isKeyPressed(Input.keys.up) ||
-                Gdx.input.isKeyPressed(Input.keys.w);
-        final bool down =
-                Gdx.input.isKeyPressed(Input.keys.down) ||
-                Gdx.input.isKeyPressed(Input.keys.s);
+class _AnimatedSpriteFrame {
+  final String texturePath;
+  final int frameWidth;
+  final int frameHeight;
+  final int frameIndex;
+  final double anchorX;
+  final double anchorY;
+  final bool flipX;
 
-        if (up && left) {
-            return 'upLeft';
-        }
-        if (up && right) {
-            return 'upRight';
-        }
-        if (down && left) {
-            return 'downLeft';
-        }
-        if (down && right) {
-            return 'downRight';
-        }
-        if (up) {
-            return 'up';
-        }
-        if (down) {
-            return 'down';
-        }
-        if (left) {
-            return 'left';
-        }
-        if (right) {
-            return 'right';
-        }
-        return 'none';
-    }
-
-    int _digitKeyCode(int digit) {
-        switch (digit) {
-            case 1:
-                return Input.keys.digit1;
-            case 2:
-                return Input.keys.digit2;
-            case 3:
-                return Input.keys.digit3;
-            case 4:
-                return Input.keys.digit4;
-            case 5:
-                return Input.keys.digit5;
-            case 6:
-                return Input.keys.digit6;
-            case 7:
-                return Input.keys.digit7;
-            case 8:
-                return Input.keys.digit8;
-            case 9:
-                return Input.keys.digit9;
-            default:
-                return -1;
-        }
-    }
-
-    void _applyInitialCameraFromLevel() {
-        final double centerX = levelData.viewportX + levelData.viewportWidth * 0.5;
-        final double centerY = levelData.viewportY + levelData.viewportHeight * 0.5;
-        camera.setPosition(centerX, centerY);
-        camera.update();
-    }
-
-    Viewport _createViewport(LevelData data, OrthographicCamera targetCamera) {
-        switch (data.viewportAdaptation) {
-            case 'expand':
-                return ExtendViewport(
-                    data.viewportWidth,
-                    data.viewportHeight,
-                    targetCamera,
-                );
-            case 'stretch':
-                return StretchViewport(
-                    data.viewportWidth,
-                    data.viewportHeight,
-                    targetCamera,
-                );
-            case 'letterbox':
-            default:
-                return FitViewport(
-                    data.viewportWidth,
-                    data.viewportHeight,
-                    targetCamera,
-                );
-        }
-    }
-
-    List<bool> _buildInitialLayerVisibility(LevelData data) {
-        return List<bool>.generate(
-            data.layers.size,
-            (int index) => data.layers.get(index).visible,
-        );
-    }
-
-    Array<SpriteRuntimeState> _createHiddenTemplateRuntimes(LevelData data) {
-        final Array<SpriteRuntimeState> runtimes = Array<SpriteRuntimeState>();
-        for (int i = 0; i < data.sprites.size; i++) {
-            final LevelSprite sprite = data.sprites.get(i);
-            final bool isTemplatePlayer =
-                    sprite.type.trim().toLowerCase() == 'player';
-            runtimes.add(
-                SpriteRuntimeState(
-                    sprite.frameIndex,
-                    0,
-                    0,
-                    sprite.x,
-                    sprite.y,
-                    !isTemplatePlayer,
-                    sprite.flipX,
-                    sprite.flipY,
-                    math.max(1, sprite.width.round()),
-                    math.max(1, sprite.height.round()),
-                    sprite.texturePath,
-                    sprite.animationId,
-                ),
-            );
-        }
-        return runtimes;
-    }
-
-    Array<RuntimeTransform> _createLayerRuntimeStates(LevelData data) {
-        final Array<RuntimeTransform> runtimes = Array<RuntimeTransform>();
-        for (int i = 0; i < data.layers.size; i++) {
-            final LevelLayer layer = data.layers.get(i);
-            runtimes.add(RuntimeTransform(layer.x, layer.y));
-        }
-        return runtimes;
-    }
-
-    DroneState? _findDrone(AppData appData, String id) {
-        for (final DroneState drone in appData.drones) {
-            if (drone.id == id) {
-                return drone;
-            }
-        }
-        return null;
-    }
-
-    InventorySlotState? _findSlot(List<InventorySlotState> slots, int slot) {
-        for (final InventorySlotState state in slots) {
-            if (state.slot == slot) {
-                return state;
-            }
-        }
-        return null;
-    }
-
-    void _refreshEquippedGrenade(MultiplayerPlayer local) {
-        final int? slot = _equippedGrenadeSlot;
-        if (slot == null) {
-            return;
-        }
-        final InventorySlotState? state = _findSlot(local.inventorySlots, slot);
-        if (state == null || state.type != 'grenade' || state.count <= 0) {
-            _equippedGrenadeSlot = null;
-        }
-    }
-
-    bool _hasEquippedGrenade(MultiplayerPlayer local) {
-        final int? slot = _equippedGrenadeSlot;
-        if (slot == null) {
-            return false;
-        }
-        final InventorySlotState? state = _findSlot(local.inventorySlots, slot);
-        return state != null && state.type == 'grenade' && state.count > 0;
-    }
-
-    ui.Offset _clampedGrenadeTargetWorld(
-        MultiplayerPlayer local,
-        double aimX,
-        double aimY,
-    ) {
-        final double ox = local.x + local.width * 0.5;
-        final double oy = local.y + local.height * 0.5;
-        final double dx = aimX - ox;
-        final double dy = aimY - oy;
-        final double dist = math.sqrt(dx * dx + dy * dy);
-        if (dist <= 0.00001) {
-            return ui.Offset(ox, oy);
-        }
-        final double scale = math.min(1, grenadeThrowRange / dist);
-        return ui.Offset(ox + dx * scale, oy + dy * scale);
-    }
-
-    Vector3 _mouseWorldPosition() {
-        final Vector3 v = Vector3(
-            Gdx.input.getX().toDouble(),
-            Gdx.input.getY().toDouble(),
-            0,
-        );
-        viewport.unproject(v);
-        return v;
-    }
-
-    String _phaseLabel(MatchPhase phase) {
-        switch (phase) {
-            case MatchPhase.connecting:
-                return 'Connecting';
-            case MatchPhase.waiting:
-                return 'Waiting';
-            case MatchPhase.playing:
-                return 'Playing';
-            case MatchPhase.finished:
-                return 'Finished';
-        }
-    }
-
-    String _msToSec(int ms) {
-        return (math.max(0, ms) / 1000).toStringAsFixed(1);
-    }
-
-    void _drawText(
-        SpriteBatch batch,
-        BitmapFont font,
-        String text,
-        double x,
-        double y,
-        double scale,
-        ui.Color color,
-    ) {
-        font.getData().setScale(scale);
-        font.setColor(color);
-        font.drawText(text, x, y);
-        font.getData().setScale(1);
-    }
-
-    void _drawCenteredText(
-        SpriteBatch batch,
-        BitmapFont font,
-        String text,
-        double y,
-        double scale,
-        ui.Color color,
-    ) {
-        font.getData().setScale(scale);
-        font.setColor(color);
-        layout.setText(font, text);
-        final double x = (Gdx.graphics.getWidth().toDouble() - layout.width) * 0.5;
-        font.draw(batch, layout, x, y);
-        font.getData().setScale(1);
-    }
+  const _AnimatedSpriteFrame({
+    required this.texturePath,
+    required this.frameWidth,
+    required this.frameHeight,
+    required this.frameIndex,
+    required this.anchorX,
+    required this.anchorY,
+    required this.flipX,
+  });
 }
