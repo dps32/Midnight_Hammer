@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -11,6 +12,7 @@ class WebSocketsHandler {
   String? socketId;
 
   WebSocketChannel? _socketClient;
+  StreamSubscription<dynamic>? _streamSubscription;
   ConnectionStatus connectionStatus = ConnectionStatus.disconnected;
 
   void connectToServer(
@@ -26,6 +28,9 @@ class WebSocketsHandler {
     port = serverPort.toString();
 
     connectionStatus = ConnectionStatus.connecting;
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _socketClient = null;
 
     try {
       final Uri uri = Uri(
@@ -33,22 +38,44 @@ class WebSocketsHandler {
         host: host,
         port: serverPort,
       );
-      _socketClient = WebSocketChannel.connect(uri);
-      connectionStatus = ConnectionStatus.connected;
+      final WebSocketChannel channel = WebSocketChannel.connect(uri);
+      _socketClient = channel;
 
-      _socketClient!.stream.listen(
+      channel.ready.then((_) {
+        if (!identical(_socketClient, channel)) {
+          return;
+        }
+        connectionStatus = ConnectionStatus.connected;
+      }).catchError((dynamic error) {
+        if (!identical(_socketClient, channel)) {
+          return;
+        }
+        connectionStatus = ConnectionStatus.disconnected;
+        onError?.call(error);
+      });
+
+      _streamSubscription = channel.stream.listen(
         (message) {
-          _handleMessage(message);
-          _callback(message);
+          if (message is String) {
+            _handleMessage(message);
+            _callback(message);
+          }
         },
         onError: (error) {
+          if (!identical(_socketClient, channel)) {
+            return;
+          }
           connectionStatus = ConnectionStatus.disconnected;
           onError?.call(error);
         },
         onDone: () {
+          if (!identical(_socketClient, channel)) {
+            return;
+          }
           connectionStatus = ConnectionStatus.disconnected;
           onDone?.call();
         },
+        cancelOnError: false,
       );
     } catch (e) {
       connectionStatus = ConnectionStatus.disconnected;
@@ -76,14 +103,22 @@ class WebSocketsHandler {
   }
 
   void sendMessage(String message) {
-    if (connectionStatus == ConnectionStatus.connected) {
-      _socketClient!.sink.add(message);
+    final WebSocketChannel? client = _socketClient;
+    if (connectionStatus == ConnectionStatus.connected && client != null) {
+      try {
+        client.sink.add(message);
+      } catch (e) {
+        connectionStatus = ConnectionStatus.disconnected;
+      }
     }
   }
 
   void disconnectFromServer() {
     connectionStatus = ConnectionStatus.disconnecting;
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
     _socketClient?.sink.close();
+    _socketClient = null;
     connectionStatus = ConnectionStatus.disconnected;
   }
 }

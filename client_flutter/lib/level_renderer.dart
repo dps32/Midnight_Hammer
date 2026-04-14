@@ -307,8 +307,8 @@ class LevelRenderer {
   ui.Rect _snapTileDstRect(ui.Rect rect) {
     final double left = rect.left.floorToDouble();
     final double top = rect.top.floorToDouble();
-    final double right = rect.right.ceilToDouble();
-    final double bottom = rect.bottom.ceilToDouble();
+    final double right = rect.right.ceilToDouble() + 1;
+    final double bottom = rect.bottom.ceilToDouble() + 1;
     if (right <= left || bottom <= top) {
       return rect;
     }

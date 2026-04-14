@@ -79,6 +79,10 @@ class Input {
     _state.onPointerUp(x, y);
   }
 
+  void onPointerScroll(double scrollY) {
+    _state.onPointerScroll(scrollY);
+  }
+
   bool isKeyPressed(int keycode) => _state.isKeyPressed(keycode);
 
   bool isKeyJustPressed(int keycode) => _state.isKeyJustPressed(keycode);
@@ -86,6 +90,8 @@ class Input {
   bool justTouched() => _state.justTouched();
 
   bool isTouchDown() => _state.isTouchDown();
+
+  double consumeScrollY() => _state.consumeScrollY();
 
   int getX() => _state.getX();
 

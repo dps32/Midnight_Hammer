@@ -6,6 +6,7 @@ class InputState {
   bool _touchDown = false;
   double _x = 0;
   double _y = 0;
+  double _scrollY = 0;
 
   void onKeyDown(int keycode) {
     if (!_pressedKeys.contains(keycode)) {
@@ -40,6 +41,10 @@ class InputState {
     _touchDown = false;
   }
 
+  void onPointerScroll(double scrollY) {
+    _scrollY += scrollY;
+  }
+
   bool justTouched() => _justTouched;
 
   int getX() => _x.round();
@@ -47,6 +52,12 @@ class InputState {
   int getY() => _y.round();
 
   bool isTouchDown() => _touchDown;
+
+  double consumeScrollY() {
+    final double value = _scrollY;
+    _scrollY = 0;
+    return value;
+  }
 
   void endFrame() {
     _justPressedKeys.clear();

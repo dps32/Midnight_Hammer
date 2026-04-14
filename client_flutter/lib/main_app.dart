@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'dart:math' as math;
 
 import 'app_data.dart';
@@ -102,7 +103,7 @@ class _ConfigurationScreenState extends State<_ConfigurationScreen> {
     });
     widget.onStart(
       NetworkConfig(
-        serverOption: _serverOption,
+        serverOption: trainingMode ? ServerOption.local : _serverOption,
         playerName: playerName,
         trainingMode: trainingMode,
       ),
@@ -322,12 +323,27 @@ class _GameViewState extends State<_GameView>
     Gdx.input.onPointerMove(gameOffset.dx, gameOffset.dy);
   }
 
+  void _onPointerHover(PointerHoverEvent event) {
+    final Offset? gameOffset = _toGameOffset(event.localPosition);
+    if (gameOffset == null) {
+      return;
+    }
+    Gdx.input.onPointerMove(gameOffset.dx, gameOffset.dy);
+  }
+
   void _onPointerUp(PointerUpEvent event) {
     final Offset? gameOffset = _toGameOffset(event.localPosition);
     if (gameOffset == null) {
       return;
     }
     Gdx.input.onPointerUp(gameOffset.dx, gameOffset.dy);
+  }
+
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) {
+      return;
+    }
+    Gdx.input.onPointerScroll(event.scrollDelta.dy);
   }
 
   void _resizeGameIfNeeded(int width, int height, bool letterboxedMode) {
@@ -394,7 +410,9 @@ class _GameViewState extends State<_GameView>
                   behavior: HitTestBehavior.opaque,
                   onPointerDown: _onPointerDown,
                   onPointerMove: _onPointerMove,
+                  onPointerHover: _onPointerHover,
                   onPointerUp: _onPointerUp,
+                  onPointerSignal: _onPointerSignal,
                   child: CustomPaint(
                     painter: _GamePainter(
                       onPaint: (Canvas canvas, Size size) {

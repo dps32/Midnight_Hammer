@@ -24,7 +24,6 @@ class PlayScreen extends ScreenAdapter {
   static const double leaderboardStartY = 92;
   static const double maxFrameSeconds = 0.25;
   static const double remotePlayerOpacity = 0.5;
-  static const double localPlayerRingPadding = 6;
   static const double hotbarHeight = 84;
   static const double hotbarSlotSize = 60;
   static const double hudPadding = 16;
@@ -64,8 +63,6 @@ class PlayScreen extends ScreenAdapter {
   double elapsedSeconds = 0;
   String _lastSubmittedDirection = 'none';
   bool _showDebugOverlay = false;
-  ui.Offset? _localPlayerHighlightCenter;
-  double? _localPlayerHighlightRadius;
   double _crosshairWorldX = 0;
   double _crosshairWorldY = 0;
   double _lastShootRequestSeconds = -1;
@@ -92,8 +89,20 @@ class PlayScreen extends ScreenAdapter {
     elapsedSeconds += math.max(0, math.min(delta, maxFrameSeconds));
 
     final AppData appData = game.getAppData();
-    if (appData.phase == MatchPhase.waiting ||
-        appData.phase == MatchPhase.connecting) {
+    final bool isTrainingMode = game.networkConfig.trainingMode;
+    if (isTrainingMode) {
+      final _TrainingWorldRules rules = _buildTrainingWorldRules();
+      appData.tickTraining(
+        delta,
+        worldWidth: levelData.worldWidth,
+        worldHeight: levelData.worldHeight,
+        blockingRects: rules.blockingRects,
+        slowZones: rules.slowZones,
+      );
+    }
+    if (!isTrainingMode &&
+        (appData.phase == MatchPhase.waiting ||
+            appData.phase == MatchPhase.connecting)) {
       _submitDirection(appData, 'none');
       game.setScreen(WaitingRoomScreen(game, levelIndex));
       return;
@@ -139,14 +148,19 @@ class PlayScreen extends ScreenAdapter {
         viewport,
       );
     }
-    _renderLocalPlayerHighlight();
     _renderCrosshair();
 
     _renderHud(appData);
-    _renderLeaderboard(appData);
+    if (!_isTrainingMode()) {
+      _renderLeaderboard(appData);
+    }
     if (appData.phase == MatchPhase.finished) {
       _renderWinnerOverlay(appData);
     }
+  }
+
+  bool _isTrainingMode() {
+    return game.networkConfig.trainingMode;
   }
 
   @override
@@ -166,8 +180,6 @@ class PlayScreen extends ScreenAdapter {
     List<MultiplayerPlayer> players,
     String? localPlayerId,
   ) {
-    _localPlayerHighlightCenter = null;
-    _localPlayerHighlightRadius = null;
     final ui.Color previousBatchColor = batch.getColor();
     bool usingRemotePlayerOpacity = false;
     final List<MultiplayerPlayer> orderedPlayers =
@@ -198,29 +210,19 @@ class PlayScreen extends ScreenAdapter {
       } else if (player.recentlyHit) {
         batch.setColor(1, 0.7, 0.7, isLocalPlayer ? 1 : remotePlayerOpacity);
       }
+      final double drawX =
+          player.x + player.width * (playerTemplate.anchorX - frame.anchorX);
+      final double drawY =
+          player.y + player.height * (playerTemplate.anchorY - frame.anchorY);
       _drawAnimatedSprite(
         batch,
         frame: frame,
-        worldX: player.x,
-        worldY: player.y,
+        worldX: drawX,
+        worldY: drawY,
         width: player.width,
         height: player.height,
         flipX: frame.flipX,
       );
-      if (isLocalPlayer) {
-        final ui.Rect dst = viewport.worldToScreenRect(
-          player.x,
-          player.y,
-          player.width,
-          player.height,
-        );
-        _localPlayerHighlightCenter = ui.Offset(
-          dst.left + dst.width * frame.anchorX,
-          dst.top + dst.height * frame.anchorY,
-        );
-        _localPlayerHighlightRadius =
-            math.max(dst.width, dst.height) * 0.5 + localPlayerRingPadding;
-      }
       if (!isLocalPlayer && usingRemotePlayerOpacity) {
         batch.setColor(1, 1, 1, remotePlayerOpacity);
       } else {
@@ -276,21 +278,6 @@ class PlayScreen extends ScreenAdapter {
       frame.frameIndex,
     );
     batch.drawRegion(texture, src, dst, flipX: flipX);
-  }
-
-  void _renderLocalPlayerHighlight() {
-    final ui.Offset? center = _localPlayerHighlightCenter;
-    final double? radius = _localPlayerHighlightRadius;
-    if (center == null || radius == null) {
-      return;
-    }
-    final ShapeRenderer shapes = game.getShapeRenderer();
-    shapes.begin(ShapeType.line);
-    shapes.setColor(localPlayerColor);
-    shapes.circle(center.dx, center.dy, radius, 24);
-    shapes.setColor(colorValueOf('FFE07A88'));
-    shapes.circle(center.dx, center.dy, math.max(4, radius - 3), 24);
-    shapes.end();
   }
 
   void _renderLeaderboard(AppData appData) {
@@ -379,23 +366,51 @@ class PlayScreen extends ScreenAdapter {
 
     final double screenWidth = Gdx.graphics.getWidth().toDouble();
     final double screenHeight = Gdx.graphics.getHeight().toDouble();
-    final double usableWidth = math.max(220, screenWidth - leaderboardWidth - hudPadding * 2);
-    final double hpPercent = local.maxHealth <= 0 ? 0 : local.health / local.maxHealth;
-    final double shieldPercent = local.maxShield <= 0 ? 0 : local.shield / local.maxShield;
+    final double reservedRight = _isTrainingMode() ? 0 : leaderboardWidth;
+    final double usableWidth = math.max(
+      220,
+      screenWidth - reservedRight - hudPadding * 2,
+    );
+    final double hpPercent = local.maxHealth <= 0
+        ? 0
+        : local.health / local.maxHealth;
+    final double shieldPercent = local.maxShield <= 0
+        ? 0
+        : local.shield / local.maxShield;
     const double barHeight = 14;
+    final double hotbarWidth = hotbarSlotSize * 5 + 8 * 4;
+    final double hotbarLeft = math.max(
+      16,
+      (usableWidth - hotbarWidth) * 0.5 + hudPadding,
+    );
+    final double hudPanelGap = 10;
+    final double leftPanelWidth = math.max(
+      170,
+      hotbarLeft - hudPadding - hudPanelGap,
+    );
+    final double leftPanelInner = math.max(120, leftPanelWidth - 10);
+    final double hotbarTop = screenHeight - hotbarHeight;
+    final double shieldBarTop = hotbarTop - 56;
+    final double healthBarTop = hotbarTop - 34;
+    final double statsTextY = hotbarTop - 10;
 
     final ShapeRenderer shapes = game.getShapeRenderer();
     shapes.begin(ShapeType.filled);
     shapes.setColor(hudBarBackground);
-    shapes.rect(hudPadding, screenHeight - 90, usableWidth, barHeight);
-    shapes.rect(hudPadding, screenHeight - 68, usableWidth, barHeight);
+    shapes.rect(hudPadding, healthBarTop, leftPanelInner, barHeight);
+    shapes.rect(hudPadding, shieldBarTop, leftPanelInner, barHeight);
     shapes.setColor(hpColor);
-    shapes.rect(hudPadding, screenHeight - 90, usableWidth * clampDouble(hpPercent, 0, 1), barHeight);
+    shapes.rect(
+      hudPadding,
+      healthBarTop,
+      leftPanelInner * clampDouble(hpPercent, 0, 1),
+      barHeight,
+    );
     shapes.setColor(shieldColor);
     shapes.rect(
       hudPadding,
-      screenHeight - 68,
-      usableWidth * clampDouble(shieldPercent, 0, 1),
+      shieldBarTop,
+      leftPanelInner * clampDouble(shieldPercent, 0, 1),
       barHeight,
     );
     shapes.end();
@@ -408,7 +423,7 @@ class PlayScreen extends ScreenAdapter {
       font,
       'HP ${local.health.round()} / ${local.maxHealth.round()}',
       hudPadding,
-      screenHeight - 96,
+      healthBarTop - 6,
       1,
       local.health <= 25 ? dangerColor : textColor,
     );
@@ -417,7 +432,7 @@ class PlayScreen extends ScreenAdapter {
       font,
       'Shield ${local.shield.round()} / ${local.maxShield.round()}',
       hudPadding,
-      screenHeight - 74,
+      shieldBarTop - 6,
       1,
       textColor,
     );
@@ -426,21 +441,19 @@ class PlayScreen extends ScreenAdapter {
       font,
       'Alive: ${appData.alivePlayers}   Kills: ${local.kills}',
       hudPadding,
-      screenHeight - 52,
-      1,
+      statsTextY,
+      0.92,
       dimTextColor,
     );
-
-    final double hotbarWidth = hotbarSlotSize * 5 + 8 * 4;
-    final double hotbarLeft = math.max(16, (usableWidth - hotbarWidth) * 0.5 + hudPadding);
-    final double hotbarTop = screenHeight - hotbarHeight;
 
     batch.end();
 
     shapes.begin(ShapeType.filled);
     for (int i = 0; i < 5; i++) {
       final double x = hotbarLeft + i * (hotbarSlotSize + 8);
-      final ui.Color border = i == local.equippedSlot ? hotbarSelected : hotbarBorder;
+      final ui.Color border = i == local.equippedSlot
+          ? hotbarSelected
+          : hotbarBorder;
       shapes.setColor(hotbarFill);
       shapes.rect(x, hotbarTop, hotbarSlotSize, hotbarSlotSize);
       shapes.setColor(border);
@@ -453,7 +466,9 @@ class PlayScreen extends ScreenAdapter {
 
     batch.begin();
     for (int i = 0; i < 5; i++) {
-      final InventoryWeaponSlot? slot = i < local.inventory.length ? local.inventory[i] : null;
+      final InventoryWeaponSlot? slot = i < local.inventory.length
+          ? local.inventory[i]
+          : null;
       if (slot == null || slot.texturePath.isEmpty) {
         continue;
       }
@@ -463,8 +478,18 @@ class PlayScreen extends ScreenAdapter {
       }
       final Texture texture = game.getAssetManager().get(texturePath, Texture);
       final double x = hotbarLeft + i * (hotbarSlotSize + 8);
-      final ui.Rect src = ui.Rect.fromLTWH(0, 0, texture.width.toDouble(), texture.height.toDouble());
-      final ui.Rect dst = ui.Rect.fromLTWH(x + 4, hotbarTop + 6, hotbarSlotSize - 8, hotbarSlotSize - 24);
+      final ui.Rect src = ui.Rect.fromLTWH(
+        0,
+        0,
+        texture.width.toDouble(),
+        texture.height.toDouble(),
+      );
+      final ui.Rect dst = ui.Rect.fromLTWH(
+        x + 4,
+        hotbarTop + 6,
+        hotbarSlotSize - 8,
+        hotbarSlotSize - 24,
+      );
       batch.drawRegion(texture, src, dst);
       _drawLeftAlignedText(
         batch,
@@ -478,14 +503,18 @@ class PlayScreen extends ScreenAdapter {
     }
 
     final EquippedWeapon? equipped = local.equippedWeapon;
-    if (equipped != null) {
+    if (equipped != null &&
+        local.equippedSlot >= 0 &&
+        local.equippedSlot < 5) {
+      final double selectedX =
+          hotbarLeft + local.equippedSlot * (hotbarSlotSize + 8);
       _drawLeftAlignedText(
         batch,
         font,
-        '${equipped.label}  ${equipped.clipAmmo}/${equipped.reserveAmmo}',
-        hudPadding,
-        screenHeight - 28,
-        1,
+        equipped.label,
+        selectedX + 4,
+        hotbarTop - 8,
+        0.95,
         localPlayerColor,
       );
     }
@@ -518,7 +547,7 @@ class PlayScreen extends ScreenAdapter {
       screenHeight * 0.46,
       2.2,
       titleColor,
-      maxWidth: screenWidth - leaderboardWidth,
+      maxWidth: screenWidth - (_isTrainingMode() ? 0 : leaderboardWidth),
     );
     _drawCenteredText(
       batch,
@@ -527,7 +556,7 @@ class PlayScreen extends ScreenAdapter {
       screenHeight * 0.53,
       1.15,
       textColor,
-      maxWidth: screenWidth - leaderboardWidth,
+      maxWidth: screenWidth - (_isTrainingMode() ? 0 : leaderboardWidth),
     );
 
     final List<RankingEntry> ranking = appData.ranking;
@@ -616,13 +645,17 @@ class PlayScreen extends ScreenAdapter {
     appData.updateAim(_crosshairWorldX, _crosshairWorldY);
 
     if (Gdx.input.justTouched() ||
-        (Gdx.input.isTouchDown() && elapsedSeconds - _lastShootRequestSeconds > 0.08)) {
+        (Gdx.input.isTouchDown() &&
+            elapsedSeconds - _lastShootRequestSeconds > 0.08)) {
       _lastShootRequestSeconds = elapsedSeconds;
       appData.shootAt(_crosshairWorldX, _crosshairWorldY);
     }
 
     if (Gdx.input.isKeyJustPressed(Input.keys.e)) {
       appData.pickupNearestItem();
+    }
+    if (Gdx.input.isKeyJustPressed(Input.keys.r)) {
+      appData.reloadWeapon();
     }
     if (Gdx.input.isKeyJustPressed(Input.keys.q)) {
       appData.dropWeapon();
@@ -642,6 +675,13 @@ class PlayScreen extends ScreenAdapter {
     if (Gdx.input.isKeyJustPressed(Input.keys.num5)) {
       appData.selectSlot(4);
     }
+
+    final double wheelDeltaY = Gdx.input.consumeScrollY();
+    if (wheelDeltaY.abs() > 0.01) {
+      final int step = wheelDeltaY > 0 ? 1 : -1;
+      final int nextSlot = (local.equippedSlot + step + 5) % 5;
+      appData.selectSlot(nextSlot);
+    }
   }
 
   ui.Offset _screenToWorld(double screenX, double screenY) {
@@ -649,8 +689,10 @@ class PlayScreen extends ScreenAdapter {
     final double viewH = math.max(1, viewport.worldHeight * camera.zoom);
     final double left = camera.x - viewW * 0.5;
     final double top = camera.y - viewH * 0.5;
-    final double worldX = left + (screenX / math.max(1, viewport.screenWidth)) * viewW;
-    final double worldY = top + (screenY / math.max(1, viewport.screenHeight)) * viewH;
+    final double worldX =
+        left + (screenX / math.max(1, viewport.screenWidth)) * viewW;
+    final double worldY =
+        top + (screenY / math.max(1, viewport.screenHeight)) * viewH;
     return ui.Offset(
       clampDouble(worldX, 0, levelData.worldWidth),
       clampDouble(worldY, 0, levelData.worldHeight),
@@ -666,7 +708,8 @@ class PlayScreen extends ScreenAdapter {
       if (!assets.isLoaded(texturePath, Texture)) {
         continue;
       }
-      final double floatOffset = math.sin(elapsedSeconds * 2.4 + item.floatPhase) * 3;
+      final double floatOffset =
+          math.sin(elapsedSeconds * 2.4 + item.floatPhase) * 3;
       final ui.Rect dst = viewport.worldToScreenRect(
         item.x,
         item.y + floatOffset,
@@ -856,7 +899,83 @@ class PlayScreen extends ScreenAdapter {
     }
   }
 
+  _TrainingWorldRules _buildTrainingWorldRules() {
+    final List<TrainingWorldRect> blocking = <TrainingWorldRect>[];
+    final List<TrainingSlowZone> slow = <TrainingSlowZone>[];
+
+    for (int i = 0; i < levelData.zones.size; i++) {
+      final LevelZone zone = levelData.zones.get(i);
+      final RuntimeTransform runtime = zoneRuntimeStates.get(i);
+      final String type = normalize(zone.type);
+      if (_isWallZone(type)) {
+        blocking.add(
+          TrainingWorldRect(
+            x: runtime.x,
+            y: runtime.y,
+            width: zone.width,
+            height: zone.height,
+          ),
+        );
+        continue;
+      }
+      final double? slowdown = _zoneSlowMultiplier(zone, type);
+      if (slowdown == null) {
+        continue;
+      }
+      slow.add(
+        TrainingSlowZone(
+          x: runtime.x,
+          y: runtime.y,
+          width: zone.width,
+          height: zone.height,
+          speedMultiplier: slowdown,
+        ),
+      );
+    }
+
+    return _TrainingWorldRules(blocking, slow);
+  }
+
+  bool _isWallZone(String type) {
+    return type.contains('wall') || type.contains('muro');
+  }
+
+  double? _zoneSlowMultiplier(LevelZone zone, String normalizedType) {
+    if (normalizedType.contains('water') || normalizedType.contains('agua')) {
+      return _readGameplaySlowMultiplier(zone.gameplayData) ?? 0.58;
+    }
+    if (normalizedType.contains('sand') || normalizedType.contains('arena')) {
+      return _readGameplaySlowMultiplier(zone.gameplayData) ?? 0.8;
+    }
+    return null;
+  }
+
+  double? _readGameplaySlowMultiplier(String gameplayData) {
+    final String raw = gameplayData.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    final RegExpMatch? eqMatch =
+        RegExp(r'(?:slow|speed|mult|factor)\s*[:=]\s*([0-9]*\.?[0-9]+)')
+            .firstMatch(raw.toLowerCase());
+    final String? valueText = eqMatch?.group(1) ??
+        RegExp(r'([0-9]*\.?[0-9]+)').firstMatch(raw)?.group(1);
+    final double? parsed = valueText == null ? null : double.tryParse(valueText);
+    if (parsed == null || !parsed.isFinite) {
+      return null;
+    }
+    return clampDouble(parsed, 0.2, 1);
+  }
+
   LevelSprite _findPlayerTemplate(LevelData data) {
+    for (final LevelSprite sprite in data.sprites.iterable()) {
+      final String type = normalize(sprite.type);
+      final String name = normalize(sprite.name);
+      if (type.contains('soldier') || name.contains('soldier')) {
+        return sprite;
+      }
+    }
+
     for (final LevelSprite sprite in data.sprites.iterable()) {
       if (normalize(sprite.type).contains('hero')) {
         return sprite;
@@ -884,58 +1003,37 @@ class PlayScreen extends ScreenAdapter {
 
   _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
     final String facing = player.facing;
-    final bool moving = player.moving;
-    bool flipX = false;
     String animationName;
 
     switch (facing) {
       case 'left':
-        animationName = moving
-            ? 'Character  Walk Right'
-            : 'Character Idle Right';
-        flipX = true;
+        animationName = 'player_left';
         break;
       case 'upLeft':
-        animationName = moving
-            ? 'Character  Walk Up-Right'
-            : 'Character Idle Up-Right';
-        flipX = true;
+        animationName = 'player_left';
         break;
       case 'downLeft':
-        animationName = moving
-            ? 'Character  Walk Down-Right'
-            : 'Character Idle Down-Right';
-        flipX = true;
+        animationName = 'player_down_left';
         break;
       case 'right':
-        animationName = moving
-            ? 'Character  Walk Right'
-            : 'Character Idle Right';
+        animationName = 'player_right';
         break;
       case 'upRight':
-        animationName = moving
-            ? 'Character  Walk Up-Right'
-            : 'Character Idle Up-Right';
+        animationName = 'player_right';
         break;
       case 'up':
-        animationName = moving ? 'Character  Walk Up' : 'Character Idle Up';
+        animationName = 'player_up';
         break;
       case 'downRight':
-        animationName = moving
-            ? 'Character  Walk Down-Right'
-            : 'Character Idle Down-Right';
+        animationName = 'player_down_right';
         break;
       case 'down':
       default:
-        animationName = moving ? 'Character  Walk Down' : 'Character Idle Down';
+        animationName = 'player_down';
         break;
     }
 
-    return _frameFromTemplate(
-      playerTemplate,
-      animationName: animationName,
-      flipX: flipX,
-    );
+    return _frameFromTemplate(playerTemplate, animationName: animationName);
   }
 
   _AnimatedSpriteFrame _frameFromTemplate(
@@ -1095,4 +1193,11 @@ class _AnimatedSpriteFrame {
     required this.anchorY,
     required this.flipX,
   });
+}
+
+class _TrainingWorldRules {
+  final List<TrainingWorldRect> blockingRects;
+  final List<TrainingSlowZone> slowZones;
+
+  const _TrainingWorldRules(this.blockingRects, this.slowZones);
 }
