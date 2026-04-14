@@ -1,1840 +1,1996 @@
-﻿
 'use strict';
 
 const { loadMultiplayerLevel } = require('./multiplayerLevelData.js');
 
+// Lobby countdown length before the server switches the match from waiting to playing.
 const WAITING_DURATION_MS = 60 * 1000;
-const FINISHED_DURATION_MS = 10 * 1000;
-
-const STORM_WAIT_MS = 60 * 1000;
-const STORM_SHRINK_1_MS = 90 * 1000;
-const STORM_SHRINK_2_MS = 90 * 1000;
-const STORM_RADIUS_STAGE_1_FACTOR = 0.65;
-const STORM_RADIUS_STAGE_2_FACTOR = 0.35;
-const STORM_DAMAGE_STAGE_1 = 20;
-const STORM_DAMAGE_STAGE_2 = 50;
-
+// Safety fallback for dt calculation if the measured loop FPS is temporarily unavailable or zero.
+const TARGET_FPS_FALLBACK = 60;
 const PLAYER_WIDTH = 20;
 const PLAYER_HEIGHT = 20;
-const PLAYER_SPEED = 150;
-const PLAYER_REGEN_DELAY_MS = 2000;
-const PLAYER_REGEN_PER_SECOND = 5;
-const PLAYER_MAX_HEALTH = 400;
+const PLAYER_START_X = 32;
+const PLAYER_START_Y = 32;
+const PLAYER_START_STEP_X = 32;
+const PLAYER_START_STEP_Y = 32;
+const GEM_WIDTH = 15;
+const GEM_HEIGHT = 15;
+const MAX_INVENTORY_SLOTS = 5;
+const PLAYER_MAX_HEALTH = 100;
+const PLAYER_MAX_SHIELD = 100;
+const DEFAULT_START_SHIELD = 30;
+const PICKUP_RADIUS = 34;
+const PROJECTILE_RADIUS = 3;
+const PLAYER_FIRE_POINT_OFFSET = 8;
+const PLAYER_MAX_COUNT = 64;
 
-const DRONE_WIDTH = 16;
-const DRONE_HEIGHT = 16;
-const DRONE_SPEED = 180;
-const DRONE_DURATION_MS = 5000;
+const MOVE_SPEED_PER_SECOND = 95;
+const DIAGONAL_NORMALIZE = 0.70710677;
+const NORMAL_ACCELERATION_PER_SECOND = 900;
+const NORMAL_DECELERATION_PER_SECOND = 1200;
+const ICE_ACCELERATION_PER_SECOND = 230;
+const ICE_DECELERATION_PER_SECOND = 75;
+const SAND_SPEED_MULTIPLIER = 0.48;
+const MOVEMENT_DIRECTION_THRESHOLD = 2;
+const VELOCITY_STOP_THRESHOLD = 0.5;
+const MAX_COLLISION_SLIDE_ITERATIONS = 4;
+const COLLISION_SWEEP_ITERATIONS = 12;
+const COLLISION_TIME_BACKOFF = 0.001;
+const COLLISION_PROBE_SPACING = 1.0;
+const MOVEMENT_EPSILON = 0.0001;
 
-const AIRSTRIKE_RADIUS = 140;
-const AIRSTRIKE_WARNING_MS = 5000;
-
-const GRENADE_SPEED = 220;
-const GRENADE_RANGE = 260;
-const GRENADE_FUSE_MS = 3000;
-
-const PROJECTILE_STEP_DISTANCE = 6;
-const WORLD_PADDING = 2;
-const PICKUP_RADIUS = 16;
-const MAX_NAME_LENGTH = 18;
-const MAX_CONSUMABLE_SLOT = 9;
-const MIN_CONSUMABLE_SLOT = 2;
-const LOOT_SIZE = 14;
-
-const WEAPONS = {
-        pistol: {
-                id: 'pistol',
-                displayName: 'Pistol',
-                kind: 'bullet',
-                magazine: 10,
-                fireIntervalMs: Math.round(0.35 * 1000),
-                reloadMs: Math.round(1.2 * 1000),
-                baseDamage: 40,
-                spreadDeg: 1.5,
-                projectileSpeed: 520,
-                dropStart: 120,
-                range: 520,
-                minFactor: 0.45,
-                projectileRadius: 3
-        },
-        smg: {
-                id: 'smg',
-                displayName: 'SMG',
-                kind: 'bullet',
-                magazine: 30,
-                fireIntervalMs: Math.round(0.095 * 1000),
-                reloadMs: Math.round(1.6 * 1000),
-                baseDamage: 24,
-                spreadDeg: 8,
-                projectileSpeed: 520,
-                dropStart: 90,
-                range: 500,
-                minFactor: 0.35,
-                projectileRadius: 3
-        },
-        rifle: {
-                id: 'rifle',
-                displayName: 'Rifle',
-                kind: 'bullet',
-                magazine: 30,
-                fireIntervalMs: Math.round(0.16 * 1000),
-                reloadMs: Math.round(1.9 * 1000),
-                baseDamage: 33,
-                spreadDeg: 2.5,
-                projectileSpeed: 520,
-                dropStart: 180,
-                range: 760,
-                minFactor: 0.55,
-                projectileRadius: 3
-        },
-        sniper: {
-                id: 'sniper',
-                displayName: 'Sniper',
-                kind: 'bullet',
-                magazine: 5,
-                fireIntervalMs: Math.round(0.8 * 1000),
-                reloadMs: Math.round(2.4 * 1000),
-                baseDamage: 350,
-                spreadDeg: 0,
-                projectileSpeed: 520,
-                dropStart: 700,
-                range: 1400,
-                minFactor: 0.85,
-                projectileRadius: 3
-        },
-        rocket: {
-                id: 'rocket',
-                displayName: 'Rocket Launcher',
-                kind: 'rocket',
-                magazine: 1,
-                fireIntervalMs: Math.round(1.0 * 1000),
-                reloadMs: Math.round(2.8 * 1000),
-                spreadDeg: 0,
-                projectileSpeed: 260,
-                range: 760,
-                projectileRadius: 5,
-                explosionInnerRadius: 24,
-                explosionOuterRadius: 80,
-                explosionInnerDamage: 400,
-                explosionOuterDamage: 120
-        }
+const GEM_COUNTS = {
+    blue: 500,
+    green: 250,
+    yellow: 100,
+    purple: 50
+};
+const GEM_VALUES = {
+    blue: 1,
+    green: 2,
+    yellow: 3,
+    purple: 5
 };
 
-const LOOT_SPAWN_COUNTS = {
-        weapon: {
-                smg: 18,
-                rifle: 12,
-                sniper: 6,
-                rocket: 4
-        },
-        consumable: {
-                grenade: 30,
-                drone: 12,
-                airstrike: 8
-        }
+const ITEM_COUNTS = {
+    health: 28,
+    shield: 22
 };
 
-const EXPLOSIVES = {
-        grenade: {
-                type: 'grenade',
-                innerRadius: 28,
-                outerRadius: 90,
-                innerDamage: 300,
-                outerDamage: 90
-        },
-        drone: {
-                type: 'drone',
-                innerRadius: 24,
-                outerRadius: 85,
-                innerDamage: 350,
-                outerDamage: 105
-        }
+const WEAPON_CATALOG = {
+    glock: {
+        id: 'glock',
+        label: 'Glock',
+        damage: 16,
+        fireRate: 3.6,
+        projectileSpeed: 360,
+        range: 560,
+        spread: 0.04,
+        pelletCount: 1,
+        clipSize: 12,
+        reserveAmmo: 72,
+        texturePath: 'media/glock_2.png'
+    },
+    smg: {
+        id: 'smg',
+        label: 'SMG',
+        damage: 10,
+        fireRate: 9,
+        projectileSpeed: 420,
+        range: 520,
+        spread: 0.07,
+        pelletCount: 1,
+        clipSize: 30,
+        reserveAmmo: 120,
+        texturePath: 'media/smg_2.png'
+    },
+    rifle_asalto: {
+        id: 'rifle_asalto',
+        label: 'Rifle',
+        damage: 18,
+        fireRate: 6,
+        projectileSpeed: 480,
+        range: 680,
+        spread: 0.04,
+        pelletCount: 1,
+        clipSize: 25,
+        reserveAmmo: 100,
+        texturePath: 'media/rifle_asalto_2.png'
+    },
+    ak47: {
+        id: 'ak47',
+        label: 'AK47',
+        damage: 24,
+        fireRate: 4.2,
+        projectileSpeed: 500,
+        range: 760,
+        spread: 0.03,
+        pelletCount: 1,
+        clipSize: 20,
+        reserveAmmo: 80,
+        texturePath: 'media/ak47_2.png'
+    },
+    escopeta: {
+        id: 'escopeta',
+        label: 'Escopeta',
+        damage: 9,
+        fireRate: 1.2,
+        projectileSpeed: 340,
+        range: 280,
+        spread: 0.22,
+        pelletCount: 6,
+        clipSize: 6,
+        reserveAmmo: 36,
+        texturePath: 'media/escopeta_2.png'
+    },
+    awp: {
+        id: 'awp',
+        label: 'AWP',
+        damage: 80,
+        fireRate: 0.9,
+        projectileSpeed: 720,
+        range: 980,
+        spread: 0.015,
+        pelletCount: 1,
+        clipSize: 5,
+        reserveAmmo: 25,
+        texturePath: 'media/awp_2.png'
+    }
 };
+
+const WEAPON_SPAWN_TABLE = [
+    'glock',
+    'glock',
+    'smg',
+    'smg',
+    'rifle_asalto',
+    'rifle_asalto',
+    'ak47',
+    'escopeta',
+    'awp'
+];
 
 const DIRECTIONS = {
-        none: { dx: 0, dy: 0 },
-        up: { dx: 0, dy: -1 },
-        upLeft: { dx: -0.70710677, dy: -0.70710677 },
-        left: { dx: -1, dy: 0 },
-        downLeft: { dx: -0.70710677, dy: 0.70710677 },
-        down: { dx: 0, dy: 1 },
-        downRight: { dx: 0.70710677, dy: 0.70710677 },
-        right: { dx: 1, dy: 0 },
-        upRight: { dx: 0.70710677, dy: -0.70710677 }
+    up: { dx: 0, dy: -1, facing: 'up' },
+    upLeft: { dx: -DIAGONAL_NORMALIZE, dy: -DIAGONAL_NORMALIZE, facing: 'upLeft' },
+    left: { dx: -1, dy: 0, facing: 'left' },
+    downLeft: { dx: -DIAGONAL_NORMALIZE, dy: DIAGONAL_NORMALIZE, facing: 'downLeft' },
+    down: { dx: 0, dy: 1, facing: 'down' },
+    downRight: { dx: DIAGONAL_NORMALIZE, dy: DIAGONAL_NORMALIZE, facing: 'downRight' },
+    right: { dx: 1, dy: 0, facing: 'right' },
+    upRight: { dx: DIAGONAL_NORMALIZE, dy: -DIAGONAL_NORMALIZE, facing: 'upRight' },
+    none: { dx: 0, dy: 0, facing: 'down' }
 };
 
 const LEVEL = loadMultiplayerLevel();
+const PLAYER_TEMPLATE = findPlayerTemplate(LEVEL.sprites);
+const GEM_TEMPLATE_BY_TYPE = buildGemTemplateMap(LEVEL.sprites);
 
 class GameLogic {
-        constructor(options = {}) {
-                const parsedBotCount = Number(options.localBotCount);
-                this.localBotCount = Number.isFinite(parsedBotCount)
-                        ? Math.max(0, Math.floor(parsedBotCount))
-                        : 0;
+    constructor() {
+        this.players = new Map();
+        this.tickCounter = 0;
+        this.nextJoinOrder = 0;
+        this.nextGemId = 0;
+        this.nextItemId = 0;
+        this.nextProjectileId = 0;
+        this.phase = 'waiting';
+        this.lobbyEndsAt = null;
+        this.winnerId = '';
+        this.gems = [];
+        this.items = [];
+        this.projectiles = [];
+        this.initialStateDirty = true;
 
-                this.players = new Map();
-                this.tickCounter = 0;
-                this.nextJoinOrder = 0;
-                this.nextEntityId = 1;
-                this.initialStateDirty = true;
+        this.layerRuntimeStates = LEVEL.layers.map((layer) => ({
+            x: layer.x,
+            y: layer.y
+        }));
+        this.zoneRuntimeStates = LEVEL.zones.map((zone) => ({
+            x: zone.x,
+            y: zone.y
+        }));
+        this.zonePreviousRuntimeStates = LEVEL.zones.map((zone) => ({
+            x: zone.x,
+            y: zone.y
+        }));
+        this.pathMotionTimeSeconds = 0;
 
-                this.phase = 'waiting';
-                this.waitingEndsAt = null;
-                this.returnToLobbyAt = null;
-                this.winnerId = '';
-                this.winnerName = '';
-
-                this.projectiles = [];
-                this.grenades = [];
-                this.drones = [];
-                this.loot = [];
-                this.explosions = [];
-                this.airstrikeWarnings = [];
-
-                this.wallZones = this.buildWallZones();
-                this.spawnCells = this.buildSpawnCells();
-                this.storm = this.createInitialStorm();
-
-                if (this.localBotCount > 0) {
-                        this.addLocalBots(this.localBotCount);
-                }
+        this.pathRuntimeById = new Map();
+        for (const path of LEVEL.paths) {
+            const runtime = createPathRuntime(path);
+            if (runtime) {
+                this.pathRuntimeById.set(path.id, runtime);
+            }
         }
 
-        addLocalBots(count) {
-                const totalBots = Math.max(0, Math.floor(Number(count) || 0));
-                const now = Date.now();
-                for (let i = 0; i < totalBots; i++) {
-                        const id = `BOT_${String(i + 1).padStart(2, '0')}`;
-                        if (this.players.has(id)) {
-                                continue;
-                        }
-                        const bot = this.createPlayer(id);
-                        bot.name = `Bot ${i + 1}`;
-                        bot.alive = false;
-                        bot.spectator = false;
-                        bot.health = PLAYER_MAX_HEALTH;
-                        this.players.set(id, bot);
+        this.pathBindingRuntimes = LEVEL.pathBindings
+            .filter((binding) => binding.enabled)
+            .map((binding) => {
+                const pathRuntime = this.pathRuntimeById.get(binding.pathId);
+                if (!pathRuntime) {
+                    return null;
                 }
-                if (totalBots > 0) {
+                const initial = this.getInitialTargetPosition(binding.targetType, binding.targetIndex);
+                if (!initial) {
+                    return null;
+                }
+                return {
+                    binding,
+                    pathRuntime,
+                    initialX: initial.x,
+                    initialY: initial.y
+                };
+            })
+            .filter(Boolean);
+
+        this.wallZoneIndices = classifyZoneIndices(['mur', 'wall'], LEVEL.zones);
+        this.iceZoneIndices = classifyZoneIndices(['ice', 'gel', 'hielo'], LEVEL.zones);
+        this.sandZoneIndices = classifyZoneIndices(['sand', 'sorra', 'arena'], LEVEL.zones);
+    }
+
+    addClient(id) {
+        if (this.players.size >= PLAYER_MAX_COUNT) {
+            return null;
+        }
+        const spawn = this.getSpawnPosition(this.players.size);
+        const player = {
+            id,
+            name: `Player ${this.players.size + 1}`,
+            x: spawn.x,
+            y: spawn.y,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
+            direction: 'none',
+            facing: 'down',
+            moving: false,
+            joinOrder: this.nextJoinOrder++,
+            score: 0,
+            gemsCollected: 0,
+            kills: 0,
+            deaths: 0,
+            placement: 0,
+            alive: true,
+            health: PLAYER_MAX_HEALTH,
+            shield: DEFAULT_START_SHIELD,
+            maxHealth: PLAYER_MAX_HEALTH,
+            maxShield: PLAYER_MAX_SHIELD,
+            recentHitAtTick: -999999,
+            velocityX: 0,
+            velocityY: 0,
+            aimX: spawn.x,
+            aimY: spawn.y,
+            nextFireAtSeconds: 0,
+            inventory: createEmptyInventory(),
+            equippedSlot: 0,
+            trainingMode: false,
+            animationId: PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '',
+            frameIndex: PLAYER_TEMPLATE ? resolveClipStartFrame(PLAYER_TEMPLATE.animationId) : 0,
+            flipX: false,
+            flipY: false
+        };
+        player.inventory[0] = createWeaponStack('glock');
+        this.players.set(id, player);
+        this.initialStateDirty = true;
+
+        if (this.players.size === 1) {
+            this.startWaitingRoom();
+        } else if (this.phase === 'playing') {
+            this.resetPlayerForMatch(player, this.players.size - 1);
+        }
+
+        return player;
+    }
+
+    removeClient(id) {
+        const removed = this.players.get(id);
+        if (removed) {
+            this.dropInventoryForPlayer(removed);
+        }
+        this.players.delete(id);
+        this.initialStateDirty = true;
+        if (this.players.size <= 0) {
+            this.resetMatch();
+            this.nextJoinOrder = 0;
+        }
+    }
+
+    handleMessage(id, msg) {
+        try {
+            const obj = JSON.parse(msg);
+            if (!obj || !obj.type) {
+                return false;
+            }
+
+            const player = this.players.get(id);
+            if (!player) {
+                return false;
+            }
+
+            switch (obj.type) {
+            case 'register':
+                {
+                    const nextName = sanitizePlayerName(obj.playerName, player.name);
+                    const wantsTraining = obj.trainingMode === true;
+                    if (nextName !== player.name) {
+                        player.name = nextName;
                         this.initialStateDirty = true;
-                        if (this.phase === 'waiting') {
-                                this.refreshWaitingCountdown(now);
-                        }
-                        this.refreshSpectatorTargets();
+                    }
+                    if (wantsTraining !== player.trainingMode) {
+                        player.trainingMode = wantsTraining;
+                        this.initialStateDirty = true;
+                    }
+                    if (player.trainingMode && this.phase === 'waiting') {
+                        this.startMatch();
+                        return true;
+                    }
                 }
-        }
-
-        addClient(id) {
-                const now = Date.now();
-                const player = this.createPlayer(id);
-
+                break;
+            case 'direction':
+                player.direction = normalizeDirection(obj.value);
+                if (player.direction !== 'none') {
+                    player.facing = DIRECTIONS[player.direction].facing;
+                }
+                break;
+            case 'aim':
+                if (Number.isFinite(Number(obj.x)) && Number.isFinite(Number(obj.y))) {
+                    player.aimX = Number(obj.x);
+                    player.aimY = Number(obj.y);
+                }
+                break;
+            case 'shoot':
                 if (this.phase === 'playing') {
-                        player.alive = false;
-                        player.spectator = true;
-                        player.health = 0;
-                        player.spectateIndex = 0;
-                } else {
-                        player.alive = false;
-                        player.spectator = false;
-                        player.health = PLAYER_MAX_HEALTH;
-                }
-
-                this.players.set(id, player);
-                this.initialStateDirty = true;
-
-                if (this.phase === 'waiting') {
-                        this.refreshWaitingCountdown(now);
-                }
-                this.refreshSpectatorTargets();
-                return player;
-        }
-
-        removeClient(id) {
-                const now = Date.now();
-                const player = this.players.get(id);
-                if (player && this.phase === 'playing' && player.alive) {
-                        this.eliminatePlayer(player, null, 'disconnect', now);
-                }
-
-                this.players.delete(id);
-                this.initialStateDirty = true;
-
-                if (this.players.size <= 0) {
-                        this.resetMatch();
-                        this.nextJoinOrder = 0;
-                        return;
-                }
-
-                if (this.phase === 'waiting') {
-                        this.refreshWaitingCountdown(now);
-                }
-                if (this.phase === 'playing') {
-                        this.checkForMatchEnd(now);
-                }
-                this.refreshSpectatorTargets();
-        }
-
-        handleMessage(id, msg) {
-                let obj;
-                try {
-                        obj = JSON.parse(msg);
-                } catch (_) {
-                        return false;
-                }
-
-                if (!obj || typeof obj.type !== 'string') {
-                        return false;
-                }
-
-                const player = this.players.get(id);
-                if (!player) {
-                        return false;
-                }
-
-                const now = Date.now();
-                switch (obj.type) {
-                case 'register':
-                        return this.handleRegister(player, obj);
-                case 'input':
-                        this.handleInput(player, obj);
-                        return false;
-                case 'action':
-                        return this.handleAction(player, obj, now);
-                case 'airstrikeTarget':
-                        return this.handleAirstrikeTarget(player, obj, now);
-                case 'restartMatch':
-                        this.restartToWaitingRoom();
+                    const aimX = Number.isFinite(Number(obj.x)) ? Number(obj.x) : player.aimX;
+                    const aimY = Number.isFinite(Number(obj.y)) ? Number(obj.y) : player.aimY;
+                    const shot = this.tryShoot(player, aimX, aimY);
+                    if (shot) {
                         return true;
-                default:
-                        return false;
+                    }
                 }
-        }
-
-        handleRegister(player, obj) {
-                const next = sanitizePlayerName(obj.playerName, player.name);
-                if (next === player.name) {
-                        return false;
-                }
-                player.name = next;
-                this.initialStateDirty = true;
-                return true;
-        }
-
-        handleInput(player, obj) {
-                player.move = normalizeDirection(obj.move);
-                player.firing = Boolean(obj.firing);
-
-                const aimX = Number(obj.aimX);
-                const aimY = Number(obj.aimY);
-                if (Number.isFinite(aimX) && Number.isFinite(aimY)) {
-                        player.aimX = clamp(aimX, 0, LEVEL.worldWidth);
-                        player.aimY = clamp(aimY, 0, LEVEL.worldHeight);
-                }
-        }
-
-        handleAction(player, obj, now) {
-                const name = String(obj.name || '').trim();
-                if (!name) {
-                        return false;
-                }
-
-                switch (name) {
-                case 'reload':
-                        return this.startReload(player, now);
-                case 'selectPrimary':
-                        return Boolean(player.primaryWeapon);
-                case 'dropPrimary':
-                        return this.dropPrimaryWeapon(player);
-                case 'useSlot':
-                        return this.useConsumableSlot(player, obj.slot, now);
-                case 'detonateDrone':
-                        return this.detonateDroneForPlayer(player, now);
-                case 'spectateNext':
-                        return this.spectateNext(player);
-                default:
-                        return false;
-                }
-        }
-
-        handleAirstrikeTarget(player, obj, now) {
-                if (!player.alive || !player.pendingAirstrike) {
-                        return false;
-                }
-
-                const x = Number(obj.x);
-                const y = Number(obj.y);
-                const targetX = Number.isFinite(x)
-                        ? clamp(x, 0, LEVEL.worldWidth)
-                        : player.x + player.width * 0.5;
-                const targetY = Number.isFinite(y)
-                        ? clamp(y, 0, LEVEL.worldHeight)
-                        : player.y + player.height * 0.5;
-
-                player.pendingAirstrike = false;
-                this.airstrikeWarnings.push({
-                        id: this.nextId('A'),
-                        ownerId: player.id,
-                        x: targetX,
-                        y: targetY,
-                        radius: AIRSTRIKE_RADIUS,
-                        createdAt: now,
-                        explodeAt: now + AIRSTRIKE_WARNING_MS
-                });
-                return true;
-        }
-
-        startReload(player, now) {
-                if (!player.alive || !player.primaryWeapon) {
-                        return false;
-                }
-                const weapon = WEAPONS[player.primaryWeapon];
-                if (!weapon) {
-                        return false;
-                }
-                if (player.reloadEndsAt > now) {
-                        return false;
-                }
-                if (player.ammoInMag >= weapon.magazine) {
-                        return false;
-                }
-                player.reloadEndsAt = now + weapon.reloadMs;
-                player.firing = false;
-                return true;
-        }
-
-        dropPrimaryWeapon(player) {
-                if (!player.alive || !player.primaryWeapon) {
-                        return false;
-                }
-
-                this.spawnWeaponLoot(
-                        player.primaryWeapon,
-                        player.x + player.width * 0.5,
-                        player.y + player.height * 0.5
-                );
-
-                player.primaryWeapon = null;
-                player.ammoInMag = 0;
-                player.reloadEndsAt = 0;
-                player.firing = false;
-                return true;
-        }
-
-        useConsumableSlot(player, rawSlot, now) {
-                if (!player.alive || player.pendingAirstrike || player.activeDroneId) {
-                        return false;
-                }
-
-                const slot = Number(rawSlot);
-                if (!Number.isFinite(slot)) {
-                        return false;
-                }
-                const slotIndex = Math.floor(slot);
-                if (slotIndex < MIN_CONSUMABLE_SLOT || slotIndex > MAX_CONSUMABLE_SLOT) {
-                        return false;
-                }
-
-                const item = player.inventorySlots.get(slotIndex);
-                if (!item || item.count <= 0) {
-                        return false;
-                }
-
-                if (item.type === 'grenade') {
-                        this.consumeInventorySlot(player, slotIndex, 1);
-                        this.throwGrenade(player, now);
+                break;
+            case 'pickup':
+                if (this.phase === 'playing' && player.alive) {
+                    const picked = this.tryPickupNearestItem(player);
+                    if (picked) {
                         return true;
+                    }
                 }
-                if (item.type === 'drone') {
-                        this.consumeInventorySlot(player, slotIndex, 1);
-                        this.deployDrone(player, now);
+                break;
+            case 'dropWeapon':
+                if (this.phase === 'playing' && player.alive) {
+                    const slotIndex = clamp(Math.floor(Number(obj.slot) || player.equippedSlot), 0, MAX_INVENTORY_SLOTS - 1);
+                    const dropped = this.tryDropWeapon(player, slotIndex);
+                    if (dropped) {
                         return true;
+                    }
                 }
-                if (item.type === 'airstrike') {
-                        this.consumeInventorySlot(player, slotIndex, 1);
-                        player.pendingAirstrike = true;
-                        player.firing = false;
+                break;
+            case 'selectSlot':
+                {
+                    const slotIndex = clamp(Math.floor(Number(obj.slot) || 0), 0, MAX_INVENTORY_SLOTS - 1);
+                    if (slotIndex !== player.equippedSlot) {
+                        player.equippedSlot = slotIndex;
                         return true;
+                    }
                 }
-                return false;
-        }
-
-        consumeInventorySlot(player, slot, amount) {
-                const entry = player.inventorySlots.get(slot);
-                if (!entry) {
-                        return;
-                }
-                entry.count = Math.max(0, entry.count - amount);
-                if (entry.count <= 0) {
-                        player.inventorySlots.delete(slot);
-                        return;
-                }
-                player.inventorySlots.set(slot, entry);
-        }
-
-        deployDrone(player, now) {
-                const x = player.x + (player.width - DRONE_WIDTH) * 0.5;
-                const y = player.y + (player.height - DRONE_HEIGHT) * 0.5;
-                const drone = {
-                        id: this.nextId('D'),
-                        ownerId: player.id,
-                        x,
-                        y,
-                        width: DRONE_WIDTH,
-                        height: DRONE_HEIGHT,
-                        expiresAt: now + DRONE_DURATION_MS
-                };
-                this.drones.push(drone);
-                player.activeDroneId = drone.id;
-                player.move = 'none';
-                player.firing = false;
-        }
-
-        detonateDroneForPlayer(player, now) {
-                if (!player.activeDroneId) {
-                        return false;
-                }
-                const index = this.drones.findIndex((drone) => drone.id === player.activeDroneId);
-                if (index < 0) {
-                        player.activeDroneId = '';
-                        return false;
-                }
-
-                const drone = this.drones[index];
-                this.drones.splice(index, 1);
-                player.activeDroneId = '';
-
-                const cx = drone.x + drone.width * 0.5;
-                const cy = drone.y + drone.height * 0.5;
-                this.spawnExplosionEvent('drone', cx, cy);
-                this.applyRadialDamageLinear(
-                        cx,
-                        cy,
-                        EXPLOSIVES.drone.innerRadius,
-                        EXPLOSIVES.drone.outerRadius,
-                        EXPLOSIVES.drone.innerDamage,
-                        EXPLOSIVES.drone.outerDamage,
-                        player.id,
-                        'drone',
-                        now
-                );
-                return true;
-        }
-
-        spectateNext(player) {
-                if (!player.spectator) {
-                        return false;
-                }
-                player.spectateIndex += 1;
-                this.refreshSpectatorTargets();
-                return true;
-        }
-
-        updateGame(fps) {
-                if (this.players.size <= 0) {
-                        return;
-                }
-
-                const now = Date.now();
-                const safeFps = Math.max(1, Number.isFinite(fps) ? fps : 60);
-                const dt = 1 / safeFps;
-                this.tickCounter = (this.tickCounter + 1) % 1000000000;
-
-                if (this.phase === 'waiting') {
-                        this.refreshWaitingCountdown(now);
-                        if (this.waitingEndsAt != null && now >= this.waitingEndsAt) {
-                                this.startMatch(now);
-                        }
-                        this.updateExplosions(now);
-                        this.refreshSpectatorTargets();
-                        return;
-                }
-
+                break;
+            case 'restartMatch':
                 if (this.phase === 'finished') {
-                        if (this.returnToLobbyAt != null && now >= this.returnToLobbyAt) {
-                                this.startWaitingRoom(now);
-                        }
-                        this.updateExplosions(now);
-                        this.refreshSpectatorTargets();
-                        return;
+                    this.restartToWaitingRoom();
+                    return true;
                 }
+                break;
+            default:
+                break;
+            }
+        } catch (_) {
+        }
+        return false;
+    }
 
-                if (this.phase !== 'playing') {
-                        return;
-                }
-
-                this.updateStorm(now);
-                this.updateReloads(now);
-                this.updatePlayerMovement(dt);
-                this.handleWeaponFire(now);
-                this.updateProjectiles(dt, now);
-                this.updateGrenades(dt, now);
-                this.updateDrones(dt, now);
-                this.updateAirstrikes(now);
-                this.updateExplosions(now);
-                this.applyStormDamage(dt, now);
-                this.applyHealthRegen(dt, now);
-                this.collectLoot();
-                this.refreshSpectatorTargets();
-                this.checkForMatchEnd(now);
+    updateGame(fps) {
+        if (this.players.size <= 0) {
+            return;
         }
 
-        refreshWaitingCountdown(now) {
-                if (this.players.size >= 2) {
-                        if (this.waitingEndsAt == null) {
-                                this.waitingEndsAt = now + WAITING_DURATION_MS;
-                        }
-                        return;
-                }
-                this.waitingEndsAt = null;
+        const safeFps = Math.max(1, fps || TARGET_FPS_FALLBACK);
+        const dtSeconds = 1 / safeFps;
+        this.tickCounter = (this.tickCounter + 1) % 1000000;
+
+        this.advanceEnvironment(dtSeconds);
+
+        if (this.phase === 'waiting') {
+            if (this.lobbyEndsAt == null) {
+                this.startWaitingRoom();
+            }
+            if (this.lobbyEndsAt != null && Date.now() >= this.lobbyEndsAt) {
+                this.startMatch();
+            }
+            return;
         }
 
-        startWaitingRoom(now = Date.now()) {
-                this.phase = 'waiting';
-                this.winnerId = '';
-                this.winnerName = '';
-                this.returnToLobbyAt = null;
-                this.waitingEndsAt = null;
-
-                this.projectiles = [];
-                this.grenades = [];
-                this.drones = [];
-                this.loot = [];
-                this.airstrikeWarnings = [];
-                this.explosions = [];
-                this.storm = this.createInitialStorm();
-
-                for (const player of this.players.values()) {
-                        player.alive = false;
-                        player.spectator = false;
-                        player.health = PLAYER_MAX_HEALTH;
-                        player.pendingAirstrike = false;
-                        player.activeDroneId = '';
-                        player.primaryWeapon = 'pistol';
-                        player.ammoInMag = WEAPONS.pistol.magazine;
-                        player.reloadEndsAt = 0;
-                        player.firing = false;
-                        player.move = 'none';
-                        player.inventorySlots.clear();
-                        const spawn = this.randomValidSpawn();
-                        player.x = spawn.x;
-                        player.y = spawn.y;
-                        player.aimX = spawn.x + player.width * 0.5;
-                        player.aimY = spawn.y + player.height * 0.5;
-                }
-
-                this.initialStateDirty = true;
-                this.refreshWaitingCountdown(now);
-                this.refreshSpectatorTargets();
+        if (this.phase !== 'playing') {
+            return;
         }
 
-        startMatch(now) {
-                this.phase = 'playing';
-                this.waitingEndsAt = null;
-                this.returnToLobbyAt = null;
-                this.winnerId = '';
-                this.winnerName = '';
+        for (const player of this.players.values()) {
+            if (!player.alive) {
+                player.moving = false;
+                player.direction = 'none';
+                continue;
+            }
+            this.applyMovingWallCarry(player);
+            this.resolveWallPenetration(player);
 
-                this.projectiles = [];
-                this.grenades = [];
-                this.drones = [];
-                this.airstrikeWarnings = [];
-                this.explosions = [];
-                this.loot = [];
+            const direction = DIRECTIONS[player.direction] || DIRECTIONS.none;
+            const onIce = this.playerOverlapsAnyZone(player, this.iceZoneIndices);
+            const onSand = this.playerOverlapsAnyZone(player, this.sandZoneIndices);
+            const speedMultiplier = onSand ? SAND_SPEED_MULTIPLIER : 1;
+            const targetVelocityX = direction.dx * MOVE_SPEED_PER_SECOND * speedMultiplier;
+            const targetVelocityY = direction.dy * MOVE_SPEED_PER_SECOND * speedMultiplier;
+            const hasInput = player.direction !== 'none';
+            const acceleration = onIce
+                ? ICE_ACCELERATION_PER_SECOND
+                : NORMAL_ACCELERATION_PER_SECOND;
+            const deceleration = onIce
+                ? ICE_DECELERATION_PER_SECOND
+                : NORMAL_DECELERATION_PER_SECOND;
+            const maxVelocityDelta = (hasInput ? acceleration : deceleration) * dtSeconds;
 
-                this.storm = this.createInitialStorm();
-                this.storm.stage = 'waiting';
-                this.storm.stageStartedAt = now;
-                this.storm.stageEndsAt = now + STORM_WAIT_MS;
+            player.velocityX = approach(player.velocityX, targetVelocityX, maxVelocityDelta);
+            player.velocityY = approach(player.velocityY, targetVelocityY, maxVelocityDelta);
+            if (Math.abs(player.velocityX) < VELOCITY_STOP_THRESHOLD) {
+                player.velocityX = 0;
+            }
+            if (Math.abs(player.velocityY) < VELOCITY_STOP_THRESHOLD) {
+                player.velocityY = 0;
+            }
 
-                const orderedPlayers = Array.from(this.players.values()).sort((a, b) => a.joinOrder - b.joinOrder);
-                const spawnPoints = this.generateSpawnPoints(orderedPlayers.length);
+            const movingLeft = player.velocityX < -MOVEMENT_DIRECTION_THRESHOLD;
+            const movingRight = player.velocityX > MOVEMENT_DIRECTION_THRESHOLD;
+            const movingUp = player.velocityY < -MOVEMENT_DIRECTION_THRESHOLD;
+            const movingDown = player.velocityY > MOVEMENT_DIRECTION_THRESHOLD;
+            player.facing = resolveFacing(player.facing, movingUp, movingDown, movingLeft, movingRight);
+            player.flipX = shouldFlipX(player.facing);
+            player.animationId = resolvePlayerAnimationId(player.facing, player.moving);
+            player.frameIndex = resolveAnimationFrame(player.animationId, this.tickCounter / safeFps);
 
-                for (let i = 0; i < orderedPlayers.length; i++) {
-                        const player = orderedPlayers[i];
-                        const spawn = spawnPoints[i] || this.randomValidSpawn();
-                        player.alive = true;
-                        player.spectator = false;
-                        player.spectatingId = '';
-                        player.spectateIndex = 0;
-                        player.health = PLAYER_MAX_HEALTH;
-                        player.lastDamageAt = 0;
-                        player.primaryWeapon = 'pistol';
-                        player.ammoInMag = WEAPONS.pistol.magazine;
-                        player.reloadEndsAt = 0;
-                        player.pendingAirstrike = false;
-                        player.activeDroneId = '';
-                        player.inventorySlots.clear();
-                        player.firing = false;
-                        player.move = 'none';
-                        player.kills = 0;
-                        player.deaths = 0;
-                        player.x = spawn.x;
-                        player.y = spawn.y;
-                        player.aimX = spawn.x + player.width * 0.5;
-                        player.aimY = spawn.y + player.height * 0.5;
-                }
+            const previousX = player.x;
+            const previousY = player.y;
+            const dx = player.velocityX * dtSeconds;
+            const dy = player.velocityY * dtSeconds;
+            this.movePlayerWithWallCollisions(player, previousX, previousY, dx, dy);
+            this.collectTouchedGems(player);
+            this.consumeTouchingSupportItems(player);
 
-                this.spawnInitialLoot();
-                this.refreshSpectatorTargets();
+            const hasDirectionalVelocity =
+                Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD ||
+                Math.abs(player.velocityY) > MOVEMENT_DIRECTION_THRESHOLD;
+            player.moving = hasInput && hasDirectionalVelocity;
         }
 
-        finishMatch(winner, now) {
-                this.phase = 'finished';
-                this.returnToLobbyAt = now + FINISHED_DURATION_MS;
-                this.winnerId = winner ? winner.id : '';
-                this.winnerName = winner ? winner.name : '';
+        this.updateProjectiles(dtSeconds, this.tickCounter / safeFps);
 
-                for (const player of this.players.values()) {
-                        player.firing = false;
-                        player.move = 'none';
-                        player.pendingAirstrike = false;
-                }
+        const alivePlayers = Array.from(this.players.values()).filter((player) => player.alive);
+        if (alivePlayers.length <= 1 && this.players.size > 1) {
+            this.finishMatch();
+        }
+    }
+
+    consumeSnapshotState() {
+        if (!this.initialStateDirty) {
+            return null;
+        }
+        this.initialStateDirty = false;
+        return this.getSnapshotState();
+    }
+
+    getSnapshotState() {
+        const players = Array.from(this.players.values()).sort(comparePlayers);
+        return {
+            level: LEVEL.levelName,
+            players: players.map((player) => ({
+                id: player.id,
+                name: player.name,
+                width: player.width,
+                height: player.height,
+                joinOrder: player.joinOrder
+            })),
+            gems: this.gems.map((gem) => ({
+                id: gem.id,
+                type: gem.type,
+                x: round2(gem.x),
+                y: round2(gem.y),
+                width: gem.width,
+                height: gem.height,
+                value: gem.value
+            }))
+        };
+    }
+
+    getGameplayState() {
+        const players = Array.from(this.players.values()).sort(comparePlayers);
+        return {
+            ...this.getGameplayStateBase(players),
+            players: players.map((player) => ({
+                ...this.serializeGameplayPlayer(player),
+            })),
+            gems: this.getVisibleGems(),
+            items: this.getVisibleItems(),
+            projectiles: this.getVisibleProjectiles(),
+            ranking: this.getRanking(players)
+        };
+    }
+
+    getGameplayStateForPlayer(playerId, options = {}) {
+        const includeOtherPlayers = options.includeOtherPlayers !== false;
+        const includeGems = options.includeGems !== false;
+        const players = Array.from(this.players.values()).sort(comparePlayers);
+        const selfPlayer = this.players.get(playerId);
+        const state = {
+            ...this.getGameplayStateBase(players),
+            selfPlayer: selfPlayer ? this.serializeGameplayPlayer(selfPlayer) : null,
+        };
+
+        if (includeOtherPlayers) {
+            state.otherPlayers = players
+                .filter((player) => player.id !== playerId)
+                .map((player) => this.serializeGameplayPlayer(player));
+        }
+        if (includeGems) {
+            state.gems = this.getVisibleGems();
+        }
+        state.items = this.getVisibleItems();
+        state.projectiles = this.getVisibleProjectiles();
+        state.ranking = this.getRanking(players);
+
+        return state;
+    }
+
+    getFullState() {
+        return {
+            ...this.getSnapshotState(),
+            ...this.getGameplayState()
+        };
+    }
+
+    getGameplayStateBase(players) {
+        const countdownSeconds = this.phase === 'waiting' && this.lobbyEndsAt != null
+            ? Math.max(0, Math.ceil((this.lobbyEndsAt - Date.now()) / 1000))
+            : 0;
+        const winner = this.winnerId ? this.players.get(this.winnerId) : players[0];
+
+        return {
+            tickCounter: this.tickCounter,
+            phase: this.phase,
+            countdownSeconds,
+            alivePlayers: players.reduce((count, player) => count + (player.alive ? 1 : 0), 0),
+            remainingGems: this.gems.reduce((count, gem) => count + (gem.visible ? 1 : 0), 0),
+            winnerId: winner ? winner.id : '',
+            winnerName: winner ? winner.name : '',
+            layerTransforms: this.layerRuntimeStates.map((layer, index) => ({
+                index,
+                x: round2(layer.x),
+                y: round2(layer.y)
+            })),
+            zoneTransforms: this.zoneRuntimeStates.map((zone, index) => ({
+                index,
+                x: round2(zone.x),
+                y: round2(zone.y)
+            }))
+        };
+    }
+
+    serializeGameplayPlayer(player) {
+        return {
+            id: player.id,
+            x: round2(player.x),
+            y: round2(player.y),
+            score: player.score,
+            gemsCollected: player.gemsCollected,
+            kills: player.kills,
+            deaths: player.deaths,
+            placement: player.placement,
+            alive: player.alive,
+            health: round2(player.health),
+            shield: round2(player.shield),
+            maxHealth: player.maxHealth,
+            maxShield: player.maxShield,
+            recentlyHit: this.tickCounter - player.recentHitAtTick <= 8,
+            aimX: round2(player.aimX),
+            aimY: round2(player.aimY),
+            equippedSlot: player.equippedSlot,
+            inventory: serializeInventory(player.inventory),
+            equippedWeapon: this.getEquippedWeaponState(player),
+            direction: player.direction,
+            facing: player.facing,
+            moving: player.moving,
+        };
+    }
+
+    getVisibleGems() {
+        return this.gems
+            .filter((gem) => gem.visible)
+            .map((gem) => ({
+                id: gem.id,
+                type: gem.type,
+                x: round2(gem.x),
+                y: round2(gem.y),
+                width: gem.width,
+                height: gem.height,
+                value: gem.value
+            }));
+    }
+
+    getVisibleItems() {
+        return this.items
+            .filter((item) => item.visible)
+            .map((item) => ({
+                id: item.id,
+                kind: item.kind,
+                weaponType: item.weaponType || '',
+                x: round2(item.x),
+                y: round2(item.y),
+                width: item.width,
+                height: item.height,
+                amount: item.amount || 0,
+                texturePath: item.texturePath || '',
+                floatPhase: round2(item.floatPhase || 0)
+            }));
+    }
+
+    getVisibleProjectiles() {
+        return this.projectiles
+            .filter((projectile) => projectile.visible)
+            .map((projectile) => ({
+                id: projectile.id,
+                ownerId: projectile.ownerId,
+                x: round2(projectile.x),
+                y: round2(projectile.y),
+                radius: projectile.radius
+            }));
+    }
+
+    getRanking(players) {
+        return players.map((player, index) => ({
+            id: player.id,
+            name: player.name,
+            alive: player.alive,
+            placement: player.placement > 0 ? player.placement : (player.alive ? 1 : index + 1),
+            kills: player.kills,
+            score: player.score
+        }));
+    }
+
+    startWaitingRoom() {
+        this.phase = 'waiting';
+        this.winnerId = '';
+        this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
+        this.initialStateDirty = true;
+        this.resetEnvironmentRuntime();
+        this.spawnGems();
+        this.spawnItems();
+        this.projectiles = [];
+        this.positionPlayersForStart();
+    }
+
+    startMatch() {
+        this.phase = 'playing';
+        this.winnerId = '';
+        this.lobbyEndsAt = null;
+        this.resetEnvironmentRuntime();
+        this.positionPlayersForStart();
+    }
+
+    finishMatch() {
+        this.phase = 'finished';
+        const players = Array.from(this.players.values()).sort(comparePlayers);
+        const alivePlayers = players.filter((player) => player.alive);
+        if (alivePlayers.length === 1) {
+            alivePlayers[0].placement = 1;
+            this.winnerId = alivePlayers[0].id;
+        } else {
+            this.winnerId = players.length > 0 ? players[0].id : '';
+        }
+    }
+
+    restartToWaitingRoom() {
+        if (this.players.size <= 0) {
+            this.resetMatch();
+            return;
+        }
+        this.startWaitingRoom();
+    }
+
+    resetMatch() {
+        this.phase = 'waiting';
+        this.lobbyEndsAt = null;
+        this.winnerId = '';
+        this.gems = [];
+        this.items = [];
+        this.projectiles = [];
+        this.nextGemId = 0;
+        this.nextItemId = 0;
+        this.nextProjectileId = 0;
+        this.initialStateDirty = true;
+        this.resetEnvironmentRuntime();
+    }
+
+    resetEnvironmentRuntime() {
+        this.pathMotionTimeSeconds = 0;
+        this.layerRuntimeStates = LEVEL.layers.map((layer) => ({
+            x: layer.x,
+            y: layer.y
+        }));
+        this.zoneRuntimeStates = LEVEL.zones.map((zone) => ({
+            x: zone.x,
+            y: zone.y
+        }));
+        this.zonePreviousRuntimeStates = LEVEL.zones.map((zone) => ({
+            x: zone.x,
+            y: zone.y
+        }));
+    }
+
+    advanceEnvironment(dtSeconds) {
+        for (let i = 0; i < this.zoneRuntimeStates.length; i++) {
+            this.zonePreviousRuntimeStates[i].x = this.zoneRuntimeStates[i].x;
+            this.zonePreviousRuntimeStates[i].y = this.zoneRuntimeStates[i].y;
         }
 
-        restartToWaitingRoom() {
-                this.startWaitingRoom(Date.now());
+        this.pathMotionTimeSeconds += dtSeconds;
+        for (const runtime of this.pathBindingRuntimes) {
+            const progress = pathProgressAtTime(
+                runtime.binding.behavior,
+                runtime.binding.durationSeconds,
+                this.pathMotionTimeSeconds
+            );
+            const sample = samplePathAtProgress(runtime.pathRuntime, progress);
+            const targetX = runtime.binding.relativeToInitialPosition
+                ? runtime.initialX + (sample.x - runtime.pathRuntime.firstPointX)
+                : sample.x;
+            const targetY = runtime.binding.relativeToInitialPosition
+                ? runtime.initialY + (sample.y - runtime.pathRuntime.firstPointY)
+                : sample.y;
+            this.applyPathTarget(runtime.binding.targetType, runtime.binding.targetIndex, targetX, targetY);
+        }
+    }
+
+    applyPathTarget(targetType, targetIndex, x, y) {
+        if (targetType === 'layer' && this.layerRuntimeStates[targetIndex]) {
+            this.layerRuntimeStates[targetIndex].x = x;
+            this.layerRuntimeStates[targetIndex].y = y;
+            return;
+        }
+        if (targetType === 'zone' && this.zoneRuntimeStates[targetIndex]) {
+            this.zoneRuntimeStates[targetIndex].x = x;
+            this.zoneRuntimeStates[targetIndex].y = y;
+        }
+    }
+
+    getInitialTargetPosition(targetType, targetIndex) {
+        if (targetType === 'layer' && LEVEL.layers[targetIndex]) {
+            return { x: LEVEL.layers[targetIndex].x, y: LEVEL.layers[targetIndex].y };
+        }
+        if (targetType === 'zone' && LEVEL.zones[targetIndex]) {
+            return { x: LEVEL.zones[targetIndex].x, y: LEVEL.zones[targetIndex].y };
+        }
+        return null;
+    }
+
+    positionPlayersForStart() {
+        const players = Array.from(this.players.values()).sort((a, b) => a.joinOrder - b.joinOrder);
+        players.forEach((player, index) => {
+            this.resetPlayerForMatch(player, index);
+        });
+    }
+
+    resetPlayerForMatch(player, index) {
+        const spawn = this.getSpawnPosition(index);
+        player.x = spawn.x;
+        player.y = spawn.y;
+        player.direction = 'none';
+        player.facing = 'down';
+        player.moving = false;
+        player.velocityX = 0;
+        player.velocityY = 0;
+        player.score = 0;
+        player.gemsCollected = 0;
+        player.kills = 0;
+        player.placement = 0;
+        player.alive = true;
+        player.health = PLAYER_MAX_HEALTH;
+        player.shield = DEFAULT_START_SHIELD;
+        player.maxHealth = PLAYER_MAX_HEALTH;
+        player.maxShield = PLAYER_MAX_SHIELD;
+        player.recentHitAtTick = -999999;
+        player.nextFireAtSeconds = 0;
+        player.aimX = player.x + player.width * 0.5;
+        player.aimY = player.y + player.height * 0.5;
+        player.inventory = createEmptyInventory();
+        player.inventory[0] = createWeaponStack('glock');
+        player.equippedSlot = 0;
+        player.animationId = PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '';
+        player.frameIndex = PLAYER_TEMPLATE ? resolveClipStartFrame(PLAYER_TEMPLATE.animationId) : 0;
+        player.flipX = false;
+        player.flipY = false;
+        this.resolveWallPenetration(player);
+    }
+
+    getSpawnPosition(index) {
+        const maxRows = Math.max(
+            1,
+            Math.floor((LEVEL.worldHeight - PLAYER_START_Y - PLAYER_HEIGHT) / PLAYER_START_STEP_Y) + 1
+        );
+        const maxColumns = Math.max(
+            1,
+            Math.floor((LEVEL.worldWidth * 0.25 - PLAYER_START_X - PLAYER_WIDTH) / PLAYER_START_STEP_X) + 1
+        );
+        const row = index % maxRows;
+        const column = Math.floor(index / maxRows) % maxColumns;
+        return {
+            x: PLAYER_START_X + column * PLAYER_START_STEP_X,
+            y: PLAYER_START_Y + row * PLAYER_START_STEP_Y
+        };
+    }
+
+    movePlayerWithWallCollisions(player, previousX, previousY, deltaX, deltaY) {
+        let currentX = previousX;
+        let currentY = previousY;
+        let remainingX = deltaX;
+        let remainingY = deltaY;
+
+        for (let i = 0; i < MAX_COLLISION_SLIDE_ITERATIONS; i++) {
+            if (Math.abs(remainingX) <= MOVEMENT_EPSILON &&
+                Math.abs(remainingY) <= MOVEMENT_EPSILON) {
+                break;
+            }
+
+            const targetX = currentX + remainingX;
+            const targetY = currentY + remainingY;
+            if (!this.wouldCollideBlocked(player, targetX, targetY)) {
+                currentX = targetX;
+                currentY = targetY;
+                break;
+            }
+
+            const hitT = this.findCollisionTimeOnSegment(player, currentX, currentY, remainingX, remainingY);
+            const safeT = clamp(hitT - COLLISION_TIME_BACKOFF, 0, 1);
+            const probeT = clamp(hitT + COLLISION_TIME_BACKOFF, 0, 1);
+
+            const segmentStartX = currentX;
+            const segmentStartY = currentY;
+            currentX = segmentStartX + remainingX * safeT;
+            currentY = segmentStartY + remainingY * safeT;
+
+            const probeX = segmentStartX + remainingX * probeT;
+            const probeY = segmentStartY + remainingY * probeT;
+            const normal = this.estimateCollisionNormalAt(player, probeX, probeY, remainingX, remainingY);
+
+            const remainingScale = Math.max(0, 1 - safeT);
+            let slideX = remainingX * remainingScale;
+            let slideY = remainingY * remainingScale;
+            const intoWall = slideX * normal.x + slideY * normal.y;
+            if (intoWall < 0) {
+                slideX -= intoWall * normal.x;
+                slideY -= intoWall * normal.y;
+            }
+
+            remainingX = slideX;
+            remainingY = slideY;
         }
 
-        resetMatch() {
-                this.phase = 'waiting';
-                this.waitingEndsAt = null;
-                this.returnToLobbyAt = null;
-                this.winnerId = '';
-                this.winnerName = '';
-                this.projectiles = [];
-                this.grenades = [];
-                this.drones = [];
-                this.loot = [];
-                this.airstrikeWarnings = [];
-                this.explosions = [];
-                this.storm = this.createInitialStorm();
-                this.initialStateDirty = true;
+        player.x = currentX;
+        player.y = currentY;
+        if (this.wouldCollideBlocked(player, player.x, player.y)) {
+            player.x = previousX;
+            player.y = previousY;
+            this.resolveWallPenetration(player);
+        }
+    }
+
+    resolveWallPenetration(player) {
+        if (!this.wouldCollideBlocked(player, player.x, player.y)) {
+            return;
         }
 
-        updateStorm(now) {
-                const storm = this.storm;
-                if (storm.stage === 'waiting') {
-                        storm.damagePerSecond = 0;
-                        storm.radius = storm.initialRadius;
-                        if (storm.stageEndsAt != null && now >= storm.stageEndsAt) {
-                                storm.stage = 'shrink1';
-                                storm.stageStartedAt = now;
-                                storm.stageEndsAt = now + STORM_SHRINK_1_MS;
-                                storm.damagePerSecond = STORM_DAMAGE_STAGE_1;
-                        }
-                        return;
-                }
+        for (const zoneIndex of this.wallZoneIndices) {
+            if (!this.collidesWithZoneAt(player, zoneIndex, player.x, player.y)) {
+                continue;
+            }
 
-                if (storm.stage === 'shrink1') {
-                        const t = normalizeProgress(now, storm.stageStartedAt, storm.stageEndsAt);
-                        storm.radius = lerp(storm.initialRadius, storm.initialRadius * STORM_RADIUS_STAGE_1_FACTOR, t);
-                        storm.damagePerSecond = STORM_DAMAGE_STAGE_1;
-                        if (now >= storm.stageEndsAt) {
-                                storm.stage = 'shrink2';
-                                storm.stageStartedAt = now;
-                                storm.stageEndsAt = now + STORM_SHRINK_2_MS;
-                                storm.radius = storm.initialRadius * STORM_RADIUS_STAGE_1_FACTOR;
-                                storm.damagePerSecond = STORM_DAMAGE_STAGE_2;
-                        }
-                        return;
-                }
+            const zoneRect = this.zoneRectAtIndex(zoneIndex);
+            const playerRect = rectAt(player.x, player.y, player.width, player.height);
 
-                if (storm.stage === 'shrink2') {
-                        const t = normalizeProgress(now, storm.stageStartedAt, storm.stageEndsAt);
-                        storm.radius = lerp(
-                                storm.initialRadius * STORM_RADIUS_STAGE_1_FACTOR,
-                                storm.initialRadius * STORM_RADIUS_STAGE_2_FACTOR,
-                                t
-                        );
-                        storm.damagePerSecond = STORM_DAMAGE_STAGE_2;
-                        if (now >= storm.stageEndsAt) {
-                                storm.stage = 'final';
-                                storm.stageStartedAt = now;
-                                storm.stageEndsAt = null;
-                                storm.radius = storm.initialRadius * STORM_RADIUS_STAGE_2_FACTOR;
-                                storm.damagePerSecond = STORM_DAMAGE_STAGE_2;
-                        }
-                        return;
-                }
+            const penLeft = playerRect.right - zoneRect.left;
+            const penRight = zoneRect.right - playerRect.left;
+            const penTop = playerRect.bottom - zoneRect.top;
+            const penBottom = zoneRect.bottom - playerRect.top;
 
-                storm.stage = 'final';
-                storm.radius = storm.initialRadius * STORM_RADIUS_STAGE_2_FACTOR;
-                storm.damagePerSecond = STORM_DAMAGE_STAGE_2;
+            let minPen = penLeft;
+            let pushX = -penLeft;
+            let pushY = 0;
+
+            if (penRight < minPen) {
+                minPen = penRight;
+                pushX = penRight;
+                pushY = 0;
+            }
+            if (penTop < minPen) {
+                minPen = penTop;
+                pushX = 0;
+                pushY = -penTop;
+            }
+            if (penBottom < minPen) {
+                minPen = penBottom;
+                pushX = 0;
+                pushY = penBottom;
+            }
+
+            player.x += pushX;
+            player.y += pushY;
+            player.x = clamp(player.x, 0, Math.max(0, LEVEL.worldWidth - player.width));
+            player.y = clamp(player.y, 0, Math.max(0, LEVEL.worldHeight - player.height));
+
+            if (!this.wouldCollideBlocked(player, player.x, player.y)) {
+                return;
+            }
+        }
+    }
+
+    applyMovingWallCarry(player) {
+        let bestDeltaMagnitudeSq = 0;
+        let carryX = 0;
+        let carryY = 0;
+
+        for (const zoneIndex of this.wallZoneIndices) {
+            if (!this.collidesWithZoneAt(player, zoneIndex, player.x, player.y)) {
+                continue;
+            }
+
+            const deltaX = this.zoneDeltaX(zoneIndex);
+            const deltaY = this.zoneDeltaY(zoneIndex);
+            if (Math.abs(deltaX) <= MOVEMENT_EPSILON &&
+                Math.abs(deltaY) <= MOVEMENT_EPSILON) {
+                continue;
+            }
+
+            const candidateX = clamp(
+                player.x + deltaX,
+                0,
+                Math.max(0, LEVEL.worldWidth - player.width)
+            );
+            const candidateY = clamp(
+                player.y + deltaY,
+                0,
+                Math.max(0, LEVEL.worldHeight - player.height)
+            );
+
+            const stillCollides = this.collidesWithZoneAt(player, zoneIndex, candidateX, candidateY);
+            if (stillCollides) {
+                continue;
+            }
+
+            const deltaMagnitudeSq = deltaX * deltaX + deltaY * deltaY;
+            if (deltaMagnitudeSq > bestDeltaMagnitudeSq) {
+                bestDeltaMagnitudeSq = deltaMagnitudeSq;
+                carryX = candidateX - player.x;
+                carryY = candidateY - player.y;
+            }
         }
 
-        updateReloads(now) {
-                for (const player of this.players.values()) {
-                        if (!player.primaryWeapon) {
-                                player.reloadEndsAt = 0;
-                                continue;
-                        }
-                        if (player.reloadEndsAt > 0 && now >= player.reloadEndsAt) {
-                                const weapon = WEAPONS[player.primaryWeapon];
-                                if (weapon) {
-                                        player.ammoInMag = weapon.magazine;
-                                }
-                                player.reloadEndsAt = 0;
-                        }
-                }
+        if (bestDeltaMagnitudeSq > 0) {
+            player.x += carryX;
+            player.y += carryY;
+        }
+    }
+
+    findCollisionTimeOnSegment(player, startX, startY, deltaX, deltaY) {
+        if (this.wouldCollideBlocked(player, startX, startY)) {
+            return 0;
+        }
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (distance <= MOVEMENT_EPSILON) {
+            return 1;
         }
 
-        updatePlayerMovement(dt) {
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        if (player.pendingAirstrike || player.activeDroneId) {
-                                continue;
-                        }
-                        const dir = DIRECTIONS[player.move] || DIRECTIONS.none;
-                        this.moveEntityWithWalls(player, dir.dx * PLAYER_SPEED * dt, dir.dy * PLAYER_SPEED * dt);
-                }
+        const probeCount = Math.max(1, Math.ceil(distance / COLLISION_PROBE_SPACING));
+        let low = 0;
+        let high = 1;
+        let hasCollision = false;
+        for (let i = 1; i <= probeCount; i++) {
+            const t = i / probeCount;
+            const sampleX = startX + deltaX * t;
+            const sampleY = startY + deltaY * t;
+            if (this.wouldCollideBlocked(player, sampleX, sampleY)) {
+                high = t;
+                hasCollision = true;
+                break;
+            }
+            low = t;
         }
 
-        handleWeaponFire(now) {
-                for (const player of this.players.values()) {
-                        if (!player.alive || !player.firing || player.pendingAirstrike || player.activeDroneId) {
-                                continue;
-                        }
-                        this.tryFire(player, now);
-                }
+        if (!hasCollision) {
+            return 1;
         }
 
-        tryFire(player, now) {
-                const weaponId = player.primaryWeapon;
-                if (!weaponId) {
-                        return;
-                }
-                const weapon = WEAPONS[weaponId];
-                if (!weapon) {
-                        return;
-                }
-                if (player.reloadEndsAt > now) {
-                        return;
-                }
-                if (now - player.lastFireAt < weapon.fireIntervalMs) {
-                        return;
-                }
-                if (player.ammoInMag <= 0) {
-                        return;
-                }
+        for (let i = 0; i < COLLISION_SWEEP_ITERATIONS; i++) {
+            const mid = (low + high) * 0.5;
+            const midX = startX + deltaX * mid;
+            const midY = startY + deltaY * mid;
+            if (this.wouldCollideBlocked(player, midX, midY)) {
+                high = mid;
+            } else {
+                low = mid;
+            }
+        }
+        return high;
+    }
 
-                const originX = player.x + player.width * 0.5;
-                const originY = player.y + player.height * 0.5;
-                let angle = Math.atan2(player.aimY - originY, player.aimX - originX);
-                if (!Number.isFinite(angle)) {
-                        angle = 0;
-                }
-                if (weapon.spreadDeg > 0) {
-                        angle += (Math.random() * 2 - 1) * degToRad(weapon.spreadDeg);
-                }
+    estimateCollisionNormalAt(player, x, y, movementX, movementY) {
+        const playerRect = rectAt(x, y, player.width, player.height);
+        let bestScore = Number.POSITIVE_INFINITY;
+        let bestNormalX = 0;
+        let bestNormalY = 0;
 
-                player.lastFireAt = now;
-                player.ammoInMag -= 1;
+        for (const zoneIndex of this.wallZoneIndices) {
+            if (!this.collidesWithZoneAt(player, zoneIndex, x, y)) {
+                continue;
+            }
 
-                this.projectiles.push({
-                        id: this.nextId('P'),
-                        kind: weapon.kind,
-                        weaponId,
-                        ownerId: player.id,
-                        x: originX,
-                        y: originY,
-                        vx: Math.cos(angle) * weapon.projectileSpeed,
-                        vy: Math.sin(angle) * weapon.projectileSpeed,
-                        range: weapon.range,
-                        travel: 0,
-                        radius: weapon.projectileRadius || 3,
-                        baseDamage: weapon.baseDamage || 0,
-                        dropStart: weapon.dropStart || 0,
-                        minFactor: weapon.minFactor || 1,
-                        explosionInnerRadius: weapon.explosionInnerRadius || 0,
-                        explosionOuterRadius: weapon.explosionOuterRadius || 0,
-                        explosionInnerDamage: weapon.explosionInnerDamage || 0,
-                        explosionOuterDamage: weapon.explosionOuterDamage || 0
-                });
+            const zoneRect = this.zoneRectAtIndex(zoneIndex);
+            const relativeX = movementX - this.zoneDeltaX(zoneIndex);
+            const relativeY = movementY - this.zoneDeltaY(zoneIndex);
+            const relativeSpeedSq = relativeX * relativeX + relativeY * relativeY;
+            const hasRelativeMotion = relativeSpeedSq > MOVEMENT_EPSILON * MOVEMENT_EPSILON;
+
+            const consider = (penetration, normalX, normalY) => {
+                if (!Number.isFinite(penetration) || penetration <= MOVEMENT_EPSILON) {
+                    return;
+                }
+                let score = penetration;
+                if (hasRelativeMotion) {
+                    const relativeDot = relativeX * normalX + relativeY * normalY;
+                    if (relativeDot >= 0) {
+                        score += 1000000;
+                    }
+                }
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestNormalX = normalX;
+                    bestNormalY = normalY;
+                }
+            };
+
+            consider(playerRect.right - zoneRect.left, -1, 0);
+            consider(zoneRect.right - playerRect.left, 1, 0);
+            consider(playerRect.bottom - zoneRect.top, 0, -1);
+            consider(zoneRect.bottom - playerRect.top, 0, 1);
         }
 
-        updateProjectiles(dt, now) {
-                const next = [];
-                for (const projectile of this.projectiles) {
-                        let alive = true;
-                        const speed = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
-                        const distance = speed * dt;
-                        const steps = Math.max(1, Math.ceil(distance / PROJECTILE_STEP_DISTANCE));
-                        const stepDt = dt / steps;
-
-                        for (let step = 0; step < steps && alive; step++) {
-                                const nx = projectile.x + projectile.vx * stepDt;
-                                const ny = projectile.y + projectile.vy * stepDt;
-                                projectile.travel += distanceBetween(projectile.x, projectile.y, nx, ny);
-                                projectile.x = nx;
-                                projectile.y = ny;
-
-                                if (this.pointCollidesWall(projectile.x, projectile.y)) {
-                                        if (projectile.kind === 'rocket') {
-                                                this.explodeRocket(projectile, now);
-                                        }
-                                        alive = false;
-                                        break;
-                                }
-
-                                const hit = this.findProjectileHitPlayer(projectile);
-                                if (hit) {
-                                        if (projectile.kind === 'rocket') {
-                                                this.explodeRocket(projectile, now);
-                                        } else {
-                                                const damage = this.bulletDamageAtDistance(projectile);
-                                                this.applyDamage(hit, damage, projectile.ownerId, projectile.weaponId, now);
-                                        }
-                                        alive = false;
-                                        break;
-                                }
-
-                                if (projectile.travel >= projectile.range) {
-                                        if (projectile.kind === 'rocket') {
-                                                this.explodeRocket(projectile, now);
-                                        }
-                                        alive = false;
-                                        break;
-                                }
-                        }
-
-                        if (alive) {
-                                next.push(projectile);
-                        }
-                }
-                this.projectiles = next;
+        if (Number.isFinite(bestScore)) {
+            return { x: bestNormalX, y: bestNormalY };
         }
 
-        findProjectileHitPlayer(projectile) {
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        if (projectile.kind === 'bullet' && player.id === projectile.ownerId) {
-                                continue;
-                        }
-                        if (circleRectOverlap(projectile.x, projectile.y, projectile.radius, rectAt(player.x, player.y, player.width, player.height))) {
-                                return player;
-                        }
+        const moveLen = Math.sqrt(movementX * movementX + movementY * movementY);
+        if (moveLen > MOVEMENT_EPSILON) {
+            return { x: -movementX / moveLen, y: -movementY / moveLen };
+        }
+        return { x: 0, y: -1 };
+    }
+
+    collectTouchedGems(player) {
+        for (const gem of this.gems) {
+            if (!gem.visible) {
+                continue;
+            }
+            if (rectsOverlap(
+                this.playerCollisionRect(player),
+                this.gemCollisionRect(gem)
+            )) {
+                player.score += gem.value;
+                player.gemsCollected += 1;
+                gem.visible = false;
+            }
+        }
+    }
+
+    spawnGems() {
+        this.gems = [];
+        this.nextGemId = 0;
+        this.initialStateDirty = true;
+
+        const shuffledCells = shuffle(LEVEL.gemCells.slice());
+        const spawnQueue = [];
+        Object.entries(GEM_COUNTS).forEach(([type, count]) => {
+            for (let i = 0; i < count; i++) {
+                spawnQueue.push(type);
+            }
+        });
+
+        for (let i = 0; i < spawnQueue.length && i < shuffledCells.length; i++) {
+            const type = spawnQueue[i];
+            const cell = shuffledCells[i];
+            this.gems.push({
+                id: `G${String(this.nextGemId++).padStart(3, '0')}`,
+                type,
+                x: cell.x,
+                y: cell.y,
+                width: GEM_WIDTH,
+                height: GEM_HEIGHT,
+                value: GEM_VALUES[type] || 1,
+                visible: true
+            });
+        }
+    }
+
+    playerOverlapsAnyZone(player, zoneIndices) {
+        for (const zoneIndex of zoneIndices) {
+            if (this.collidesWithZoneAt(player, zoneIndex, player.x, player.y)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    collidesWithZoneAt(player, zoneIndex, x, y) {
+        const zoneRect = this.zoneRectAtIndex(zoneIndex);
+        for (const hitBoxRect of this.playerHitBoxRectsAt(player, x, y)) {
+            if (rectsOverlap(hitBoxRect, zoneRect)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    wouldCollideBlocked(player, x, y) {
+        for (const zoneIndex of this.wallZoneIndices) {
+            const zoneRect = this.zoneRectAtIndex(zoneIndex);
+            for (const hitBoxRect of this.playerHitBoxRectsAt(player, x, y)) {
+                if (rectsOverlap(hitBoxRect, zoneRect)) {
+                    return true;
                 }
-                return null;
+            }
+        }
+        return false;
+    }
+
+    zoneRectAtIndex(zoneIndex) {
+        const zone = LEVEL.zones[zoneIndex];
+        const runtime = this.zoneRuntimeStates[zoneIndex] || zone;
+        return rectAt(runtime.x, runtime.y, zone.width, zone.height);
+    }
+
+    zoneDeltaX(zoneIndex) {
+        const current = this.zoneRuntimeStates[zoneIndex];
+        const previous = this.zonePreviousRuntimeStates[zoneIndex];
+        if (!current || !previous) {
+            return 0;
+        }
+        return current.x - previous.x;
+    }
+
+    zoneDeltaY(zoneIndex) {
+        const current = this.zoneRuntimeStates[zoneIndex];
+        const previous = this.zonePreviousRuntimeStates[zoneIndex];
+        if (!current || !previous) {
+            return 0;
+        }
+        return current.y - previous.y;
+    }
+
+    playerCollisionRect(player) {
+        const hitBoxes = this.playerHitBoxRectsAt(player, player.x, player.y);
+        return unionRects(hitBoxes, rectAt(player.x, player.y, player.width, player.height));
+    }
+
+    playerHitBoxRectsAt(player, x, y) {
+        const clip = LEVEL.animationClips.get(player.animationId);
+        const hitBoxes = activeHitBoxesForClip(clip, player.frameIndex);
+        if (!hitBoxes || hitBoxes.length <= 0) {
+            return [rectAt(x, y, player.width, player.height)];
+        }
+        return hitBoxes.map((hitBox) =>
+            hitBoxRectAt(x, y, player.width, player.height, hitBox, player.flipX, player.flipY)
+        );
+    }
+
+    gemCollisionRect(gem) {
+        const template = GEM_TEMPLATE_BY_TYPE.get(gem.type);
+        const clip = template ? LEVEL.animationClips.get(template.animationId) : null;
+        const frameIndex = resolveAnimationFrame(template ? template.animationId : '', this.tickCounter / TARGET_FPS_FALLBACK);
+        const hitBoxes = activeHitBoxesForClip(clip, frameIndex);
+        if (!hitBoxes || hitBoxes.length <= 0) {
+            return rectAt(gem.x, gem.y, gem.width, gem.height);
+        }
+        const rects = hitBoxes.map((hitBox) =>
+            hitBoxRectAt(gem.x, gem.y, gem.width, gem.height, hitBox, false, false)
+        );
+        return unionRects(rects, rectAt(gem.x, gem.y, gem.width, gem.height));
+    }
+
+    spawnItems() {
+        this.items = [];
+        this.nextItemId = 0;
+        const cells = shuffle(LEVEL.gemCells.slice());
+        if (cells.length <= 0) {
+            return;
         }
 
-        bulletDamageAtDistance(projectile) {
-                if (projectile.baseDamage <= 0) {
-                        return 0;
-                }
-                if (projectile.travel <= projectile.dropStart) {
-                        return projectile.baseDamage;
-                }
-                const rangeAfterDrop = Math.max(1, projectile.range - projectile.dropStart);
-                const t = clamp((projectile.travel - projectile.dropStart) / rangeAfterDrop, 0, 1);
-                const factor = lerp(1, projectile.minFactor, t);
-                return Math.max(1, Math.round(projectile.baseDamage * factor));
+        const weaponCount = Math.max(10, Math.floor(cells.length * 0.08));
+        for (let i = 0; i < weaponCount && i < cells.length; i++) {
+            const weaponType = WEAPON_SPAWN_TABLE[i % WEAPON_SPAWN_TABLE.length];
+            const item = this.createWeaponItem(weaponType, cells[i].x, cells[i].y);
+            if (item) {
+                this.items.push(item);
+            }
         }
 
-        explodeRocket(projectile, now) {
-                this.spawnExplosionEvent('rocket', projectile.x, projectile.y);
-                this.applyRadialDamageLinear(
-                        projectile.x,
-                        projectile.y,
-                        projectile.explosionInnerRadius,
-                        projectile.explosionOuterRadius,
-                        projectile.explosionInnerDamage,
-                        projectile.explosionOuterDamage,
-                        projectile.ownerId,
-                        'rocket',
-                        now
-                );
+        const supportCells = cells.slice(weaponCount);
+        let cursor = 0;
+        for (let i = 0; i < ITEM_COUNTS.health && cursor < supportCells.length; i++, cursor++) {
+            this.items.push(this.createSupportItem('health', supportCells[cursor].x, supportCells[cursor].y, 40));
+        }
+        for (let i = 0; i < ITEM_COUNTS.shield && cursor < supportCells.length; i++, cursor++) {
+            this.items.push(this.createSupportItem('shield', supportCells[cursor].x, supportCells[cursor].y, 35));
+        }
+    }
+
+    createWeaponItem(weaponType, x, y, stack) {
+        const config = WEAPON_CATALOG[weaponType];
+        if (!config) {
+            return null;
+        }
+        const ammoStack = stack || createWeaponStack(weaponType);
+        return {
+            id: `I${String(this.nextItemId++).padStart(4, '0')}`,
+            kind: 'weapon',
+            weaponType,
+            x,
+            y,
+            width: 26,
+            height: 14,
+            amount: ammoStack.reserveAmmo,
+            clipAmmo: ammoStack.clipAmmo,
+            maxClipAmmo: ammoStack.maxClipAmmo,
+            texturePath: config.texturePath,
+            floatPhase: Math.random() * Math.PI * 2,
+            visible: true
+        };
+    }
+
+    createSupportItem(kind, x, y, amount) {
+        return {
+            id: `I${String(this.nextItemId++).padStart(4, '0')}`,
+            kind,
+            weaponType: '',
+            x,
+            y,
+            width: 16,
+            height: 16,
+            amount,
+            texturePath: kind === 'shield' ? 'media/gem.png' : 'media/DragonDeath.png',
+            floatPhase: Math.random() * Math.PI * 2,
+            visible: true
+        };
+    }
+
+    consumeTouchingSupportItems(player) {
+        const playerRect = this.playerCollisionRect(player);
+        for (const item of this.items) {
+            if (!item.visible || item.kind === 'weapon') {
+                continue;
+            }
+            if (!rectsOverlap(playerRect, rectAt(item.x, item.y, item.width, item.height))) {
+                continue;
+            }
+            if (item.kind === 'health') {
+                if (player.health >= player.maxHealth) {
+                    continue;
+                }
+                player.health = clamp(player.health + item.amount, 0, player.maxHealth);
+            } else if (item.kind === 'shield') {
+                if (player.shield >= player.maxShield) {
+                    continue;
+                }
+                player.shield = clamp(player.shield + item.amount, 0, player.maxShield);
+            }
+            item.visible = false;
+        }
+    }
+
+    tryPickupNearestItem(player) {
+        let nearest = null;
+        let nearestDistanceSq = Number.POSITIVE_INFINITY;
+        const playerCenterX = player.x + player.width * 0.5;
+        const playerCenterY = player.y + player.height * 0.5;
+
+        for (const item of this.items) {
+            if (!item.visible || item.kind !== 'weapon') {
+                continue;
+            }
+            const centerX = item.x + item.width * 0.5;
+            const centerY = item.y + item.height * 0.5;
+            const dx = centerX - playerCenterX;
+            const dy = centerY - playerCenterY;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq > PICKUP_RADIUS * PICKUP_RADIUS) {
+                continue;
+            }
+            if (distanceSq < nearestDistanceSq) {
+                nearest = item;
+                nearestDistanceSq = distanceSq;
+            }
         }
 
-        throwGrenade(player, now) {
-                const originX = player.x + player.width * 0.5;
-                const originY = player.y + player.height * 0.5;
-                const dx = player.aimX - originX;
-                const dy = player.aimY - originY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const safeDist = dist <= 0.0001 ? 1 : dist;
-                const scale = Math.min(1, GRENADE_RANGE / safeDist);
-                const targetX = originX + dx * scale;
-                const targetY = originY + dy * scale;
-                this.grenades.push({
-                        id: this.nextId('G'),
-                        ownerId: player.id,
-                        x: originX,
-                        y: originY,
-                        targetX,
-                        targetY,
-                        explodeAt: now + GRENADE_FUSE_MS
-                });
+        if (!nearest) {
+            return false;
         }
 
-        updateGrenades(dt, now) {
-                const next = [];
-                for (const grenade of this.grenades) {
-                        const toTargetX = grenade.targetX - grenade.x;
-                        const toTargetY = grenade.targetY - grenade.y;
-                        const remaining = Math.sqrt(toTargetX * toTargetX + toTargetY * toTargetY);
-                        const step = GRENADE_SPEED * dt;
-                        if (remaining > 0.001) {
-                                if (step >= remaining) {
-                                        grenade.x = grenade.targetX;
-                                        grenade.y = grenade.targetY;
-                                } else {
-                                        grenade.x += (toTargetX / remaining) * step;
-                                        grenade.y += (toTargetY / remaining) * step;
-                                }
-                        }
+        const slot = findFirstFreeSlot(player.inventory);
+        const slotIndex = slot >= 0 ? slot : player.equippedSlot;
+        if (slotIndex < 0 || slotIndex >= player.inventory.length) {
+            return false;
+        }
+        player.inventory[slotIndex] = {
+            kind: 'weapon',
+            weaponType: nearest.weaponType,
+            clipAmmo: nearest.clipAmmo,
+            reserveAmmo: nearest.amount,
+            maxClipAmmo: nearest.maxClipAmmo
+        };
+        player.equippedSlot = slotIndex;
+        nearest.visible = false;
+        return true;
+    }
 
-                        if (now >= grenade.explodeAt) {
-                                this.spawnExplosionEvent('grenade', grenade.x, grenade.y);
-                                this.applyRadialDamageLinear(
-                                        grenade.x,
-                                        grenade.y,
-                                        EXPLOSIVES.grenade.innerRadius,
-                                        EXPLOSIVES.grenade.outerRadius,
-                                        EXPLOSIVES.grenade.innerDamage,
-                                        EXPLOSIVES.grenade.outerDamage,
-                                        grenade.ownerId,
-                                        'grenade',
-                                        now
-                                );
-                                continue;
-                        }
-                        next.push(grenade);
-                }
-                this.grenades = next;
+    tryDropWeapon(player, slotIndex) {
+        const stack = player.inventory[slotIndex];
+        if (!stack || stack.kind !== 'weapon') {
+            return false;
         }
 
-        updateDrones(dt, now) {
-                const next = [];
-                for (const drone of this.drones) {
-                        const owner = this.players.get(drone.ownerId);
-                        if (!owner || !owner.alive) {
-                                if (owner) {
-                                        owner.activeDroneId = '';
-                                }
-                                continue;
-                        }
+        const dropX = clamp(player.x + player.width * 0.5 - 12, 0, Math.max(0, LEVEL.worldWidth - 24));
+        const dropY = clamp(player.y + player.height * 0.5 - 8, 0, Math.max(0, LEVEL.worldHeight - 16));
+        const item = this.createWeaponItem(stack.weaponType, dropX, dropY, stack);
+        if (item) {
+            this.items.push(item);
+        }
+        player.inventory[slotIndex] = null;
+        if (player.equippedSlot === slotIndex) {
+            player.equippedSlot = Math.max(0, findFirstFilledSlot(player.inventory));
+        }
+        return true;
+    }
 
-                        if (now >= drone.expiresAt) {
-                                owner.activeDroneId = '';
-                                const cx = drone.x + drone.width * 0.5;
-                                const cy = drone.y + drone.height * 0.5;
-                                this.spawnExplosionEvent('drone', cx, cy);
-                                this.applyRadialDamageLinear(
-                                        cx,
-                                        cy,
-                                        EXPLOSIVES.drone.innerRadius,
-                                        EXPLOSIVES.drone.outerRadius,
-                                        EXPLOSIVES.drone.innerDamage,
-                                        EXPLOSIVES.drone.outerDamage,
-                                        owner.id,
-                                        'drone',
-                                        now
-                                );
-                                continue;
-                        }
+    getEquippedWeaponState(player) {
+        const stack = player.inventory[player.equippedSlot];
+        if (!stack || stack.kind !== 'weapon') {
+            return null;
+        }
+        const config = WEAPON_CATALOG[stack.weaponType];
+        if (!config) {
+            return null;
+        }
+        return {
+            type: config.id,
+            label: config.label,
+            clipAmmo: stack.clipAmmo,
+            reserveAmmo: stack.reserveAmmo,
+            texturePath: config.texturePath,
+            fireRate: config.fireRate
+        };
+    }
 
-                        const dir = DIRECTIONS[owner.move] || DIRECTIONS.none;
-                        this.moveEntityWithWalls(drone, dir.dx * DRONE_SPEED * dt, dir.dy * DRONE_SPEED * dt);
-                        next.push(drone);
-                }
-                this.drones = next;
+    tryShoot(player, aimX, aimY) {
+        if (!player.alive) {
+            return false;
+        }
+        const stack = player.inventory[player.equippedSlot];
+        if (!stack || stack.kind !== 'weapon') {
+            return false;
+        }
+        const config = WEAPON_CATALOG[stack.weaponType];
+        if (!config || stack.clipAmmo <= 0) {
+            return false;
         }
 
-        updateAirstrikes(now) {
-                const remaining = [];
-                for (const warning of this.airstrikeWarnings) {
-                        if (now < warning.explodeAt) {
-                                remaining.push(warning);
-                                continue;
-                        }
+        const nowSeconds = this.tickCounter / TARGET_FPS_FALLBACK;
+        if (nowSeconds < player.nextFireAtSeconds) {
+            return false;
+        }
+        player.nextFireAtSeconds = nowSeconds + (1 / Math.max(0.2, config.fireRate));
 
-                        this.spawnExplosionEvent('airstrike', warning.x, warning.y);
-                        this.applyAirstrikeDamage(warning, now);
-                }
-                this.airstrikeWarnings = remaining;
+        const originX = player.x + player.width * 0.5;
+        const originY = player.y + player.height * 0.5;
+        const baseDx = aimX - originX;
+        const baseDy = aimY - originY;
+        const baseLength = Math.sqrt(baseDx * baseDx + baseDy * baseDy);
+        let dirX = baseDx;
+        let dirY = baseDy;
+        if (baseLength <= 0.001) {
+            const fallback = directionVectorForFacing(player.facing);
+            dirX = fallback.x;
+            dirY = fallback.y;
+        }
+        const normalized = normalizeVector(dirX, dirY);
+        player.aimX = originX + normalized.x * 100;
+        player.aimY = originY + normalized.y * 100;
+
+        stack.clipAmmo = Math.max(0, stack.clipAmmo - 1);
+        const pellets = Math.max(1, config.pelletCount || 1);
+        for (let i = 0; i < pellets; i++) {
+            const spread = config.spread || 0;
+            const spreadAngle = randomInRange(-spread, spread);
+            const spreadVector = rotateVector(normalized.x, normalized.y, spreadAngle);
+            this.projectiles.push({
+                id: `P${String(this.nextProjectileId++).padStart(5, '0')}`,
+                ownerId: player.id,
+                x: originX + spreadVector.x * PLAYER_FIRE_POINT_OFFSET,
+                y: originY + spreadVector.y * PLAYER_FIRE_POINT_OFFSET,
+                vx: spreadVector.x * config.projectileSpeed,
+                vy: spreadVector.y * config.projectileSpeed,
+                damage: config.damage,
+                rangeLeft: config.range,
+                radius: PROJECTILE_RADIUS,
+                visible: true
+            });
         }
 
-        applyAirstrikeDamage(warning, now) {
-                const inner = warning.radius * 0.5;
-                const outer = warning.radius;
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        const cx = player.x + player.width * 0.5;
-                        const cy = player.y + player.height * 0.5;
-                        const dist = distanceBetween(cx, cy, warning.x, warning.y);
-                        if (dist > outer) {
-                                continue;
-                        }
-                        this.applyDamage(player, dist <= inner ? 400 : 300, warning.ownerId, 'airstrike', now);
-                }
+        if (stack.clipAmmo <= 0 && stack.reserveAmmo > 0) {
+            const refill = Math.min(stack.maxClipAmmo, stack.reserveAmmo);
+            stack.clipAmmo += refill;
+            stack.reserveAmmo -= refill;
         }
 
-        applyStormDamage(dt, now) {
-                if (this.storm.damagePerSecond <= 0) {
-                        return;
-                }
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        const cx = player.x + player.width * 0.5;
-                        const cy = player.y + player.height * 0.5;
-                        const dist = distanceBetween(cx, cy, this.storm.centerX, this.storm.centerY);
-                        if (dist <= this.storm.radius) {
-                                continue;
-                        }
-                        this.applyDamage(player, this.storm.damagePerSecond * dt, null, 'storm', now);
-                }
+        return true;
+    }
+
+    updateProjectiles(dtSeconds) {
+        if (this.projectiles.length <= 0) {
+            return;
         }
 
-        applyHealthRegen(dt, now) {
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        if (player.health >= PLAYER_MAX_HEALTH) {
-                                continue;
-                        }
-                        if (now - player.lastDamageAt < PLAYER_REGEN_DELAY_MS) {
-                                continue;
-                        }
-                        player.health = Math.min(PLAYER_MAX_HEALTH, player.health + PLAYER_REGEN_PER_SECOND * dt);
+        for (const projectile of this.projectiles) {
+            if (!projectile.visible) {
+                continue;
+            }
+            const dx = projectile.vx * dtSeconds;
+            const dy = projectile.vy * dtSeconds;
+            projectile.x += dx;
+            projectile.y += dy;
+            projectile.rangeLeft -= Math.sqrt(dx * dx + dy * dy);
+
+            if (projectile.rangeLeft <= 0 ||
+                projectile.x < 0 || projectile.y < 0 ||
+                projectile.x > LEVEL.worldWidth || projectile.y > LEVEL.worldHeight ||
+                this.pointBlockedByWalls(projectile.x, projectile.y)) {
+                projectile.visible = false;
+                continue;
+            }
+
+            const owner = this.players.get(projectile.ownerId);
+            if (!owner || !owner.alive) {
+                projectile.visible = false;
+                continue;
+            }
+
+            for (const target of this.players.values()) {
+                if (!target.alive || target.id === projectile.ownerId) {
+                    continue;
                 }
+                const hitRect = this.playerCollisionRect(target);
+                if (!pointInsideRect(projectile.x, projectile.y, hitRect)) {
+                    continue;
+                }
+                this.applyDamage(owner, target, projectile.damage);
+                projectile.visible = false;
+                break;
+            }
         }
 
-        collectLoot() {
-                if (this.loot.length <= 0) {
-                        return;
-                }
-                const remaining = [];
-                for (const loot of this.loot) {
-                        let picked = false;
-                        for (const player of this.players.values()) {
-                                if (!player.alive) {
-                                        continue;
-                                }
-                                if (!this.playerCanPickLoot(player, loot)) {
-                                        continue;
-                                }
+        this.projectiles = this.projectiles.filter((projectile) => projectile.visible);
+    }
 
-                                if (loot.kind === 'weapon') {
-                                        if (player.primaryWeapon) {
-                                                continue;
-                                        }
-                                        player.primaryWeapon = loot.weaponId;
-                                        const weapon = WEAPONS[loot.weaponId];
-                                        player.ammoInMag = weapon ? weapon.magazine : 0;
-                                        player.reloadEndsAt = 0;
-                                        picked = true;
-                                        break;
-                                }
+    pointBlockedByWalls(x, y) {
+        for (const zoneIndex of this.wallZoneIndices) {
+            const zoneRect = this.zoneRectAtIndex(zoneIndex);
+            if (x >= zoneRect.left && x <= zoneRect.right && y >= zoneRect.top && y <= zoneRect.bottom) {
+                return true;
+            }
+        }
+        return false;
+    }
 
-                                if (loot.kind === 'consumable') {
-                                        if (!this.addConsumable(player, loot.consumableType, 1)) {
-                                                continue;
-                                        }
-                                        picked = true;
-                                        break;
-                                }
-                        }
-                        if (!picked) {
-                                remaining.push(loot);
-                        }
-                }
-                this.loot = remaining;
+    applyDamage(attacker, target, amount) {
+        let damage = Math.max(0, Number(amount) || 0);
+        if (damage <= 0 || !target.alive) {
+            return;
         }
 
-        playerCanPickLoot(player, loot) {
-                const cx = player.x + player.width * 0.5;
-                const cy = player.y + player.height * 0.5;
-                return distanceBetween(cx, cy, loot.x, loot.y) <= PICKUP_RADIUS;
+        const shieldDamage = Math.min(target.shield, damage);
+        target.shield -= shieldDamage;
+        damage -= shieldDamage;
+
+        if (damage > 0) {
+            target.health = Math.max(0, target.health - damage);
         }
+        target.recentHitAtTick = this.tickCounter;
 
-        addConsumable(player, type, amount) {
-                for (const [slot, entry] of player.inventorySlots.entries()) {
-                        if (entry.type === type) {
-                                entry.count += amount;
-                                player.inventorySlots.set(slot, entry);
-                                return true;
-                        }
-                }
-                for (let slot = MIN_CONSUMABLE_SLOT; slot <= MAX_CONSUMABLE_SLOT; slot++) {
-                        if (!player.inventorySlots.has(slot)) {
-                                player.inventorySlots.set(slot, { type, count: amount });
-                                return true;
-                        }
-                }
-                return false;
+        if (target.health <= 0 && target.alive) {
+            target.alive = false;
+            target.deaths += 1;
+            target.direction = 'none';
+            target.moving = false;
+            target.velocityX = 0;
+            target.velocityY = 0;
+            target.placement = Math.max(2, Array.from(this.players.values()).filter((player) => player.alive).length + 1);
+            attacker.kills += 1;
+            attacker.score += 25;
+            this.dropInventoryForPlayer(target);
         }
+    }
 
-        applyDamage(player, rawDamage, sourceId, reason, now) {
-                if (!player.alive) {
-                        return;
-                }
-                const damage = Math.max(0, Number(rawDamage) || 0);
-                if (damage <= 0) {
-                        return;
-                }
-                player.health -= damage;
-                player.lastDamageAt = now;
-                if (player.health > 0) {
-                        return;
-                }
-                this.eliminatePlayer(player, sourceId, reason, now);
+    dropInventoryForPlayer(player) {
+        for (let i = 0; i < player.inventory.length; i++) {
+            const stack = player.inventory[i];
+            if (!stack || stack.kind !== 'weapon') {
+                continue;
+            }
+            const jitter = randomInRange(-8, 8);
+            const dropX = clamp(player.x + player.width * 0.5 + jitter, 0, Math.max(0, LEVEL.worldWidth - 24));
+            const dropY = clamp(player.y + player.height * 0.5 - jitter, 0, Math.max(0, LEVEL.worldHeight - 16));
+            const item = this.createWeaponItem(stack.weaponType, dropX, dropY, stack);
+            if (item) {
+                this.items.push(item);
+            }
+            player.inventory[i] = null;
         }
-
-        eliminatePlayer(player, sourceId, reason, now) {
-                if (!player.alive) {
-                        return;
-                }
-
-                player.alive = false;
-                player.spectator = true;
-                player.health = 0;
-                player.firing = false;
-                player.move = 'none';
-                player.pendingAirstrike = false;
-                player.reloadEndsAt = 0;
-
-                if (player.activeDroneId) {
-                        this.removeDroneById(player.activeDroneId);
-                        player.activeDroneId = '';
-                }
-
-                this.dropLootOnDeath(player);
-                player.deaths += 1;
-
-                if (sourceId && sourceId !== player.id) {
-                        const killer = this.players.get(sourceId);
-                        if (killer) {
-                                killer.kills += 1;
-                        }
-                }
-
-                this.refreshSpectatorTargets();
-                this.checkForMatchEnd(now);
-        }
-
-        dropLootOnDeath(player) {
-                const dropX = player.x + player.width * 0.5;
-                const dropY = player.y + player.height * 0.5;
-
-                if (player.primaryWeapon) {
-                        this.spawnWeaponLoot(player.primaryWeapon, dropX, dropY);
-                        player.primaryWeapon = null;
-                        player.ammoInMag = 0;
-                }
-
-                for (const entry of player.inventorySlots.values()) {
-                        for (let i = 0; i < entry.count; i++) {
-                                this.spawnConsumableLoot(entry.type, dropX + randomRange(-10, 10), dropY + randomRange(-10, 10));
-                        }
-                }
-                player.inventorySlots.clear();
-        }
-
-        spawnExplosionEvent(type, x, y) {
-                this.explosions.push({
-                        id: this.nextId('X'),
-                        type,
-                        x,
-                        y,
-                        expiresAt: Date.now() + 450
-                });
-        }
-
-        updateExplosions(now) {
-                this.explosions = this.explosions.filter((explosion) => explosion.expiresAt > now);
-        }
-
-        applyRadialDamageLinear(x, y, innerRadius, outerRadius, innerDamage, outerDamage, sourceId, reason, now) {
-                const safeInner = Math.max(0, innerRadius);
-                const safeOuter = Math.max(safeInner + 0.001, outerRadius);
-                for (const player of this.players.values()) {
-                        if (!player.alive) {
-                                continue;
-                        }
-                        const cx = player.x + player.width * 0.5;
-                        const cy = player.y + player.height * 0.5;
-                        const dist = distanceBetween(cx, cy, x, y);
-                        if (dist > safeOuter) {
-                                continue;
-                        }
-
-                        let damage;
-                        if (dist <= safeInner) {
-                                damage = innerDamage;
-                        } else {
-                                const t = (dist - safeInner) / (safeOuter - safeInner);
-                                damage = lerp(innerDamage, outerDamage, t);
-                        }
-                        this.applyDamage(player, damage, sourceId, reason, now);
-                }
-        }
-
-        removeDroneById(droneId) {
-                const index = this.drones.findIndex((drone) => drone.id === droneId);
-                if (index >= 0) {
-                        this.drones.splice(index, 1);
-                }
-        }
-
-        checkForMatchEnd(now) {
-                if (this.phase !== 'playing') {
-                        return;
-                }
-                const alivePlayers = Array.from(this.players.values()).filter((player) => player.alive);
-                if (alivePlayers.length > 1) {
-                        return;
-                }
-                this.finishMatch(alivePlayers[0] || null, now);
-        }
-
-        refreshSpectatorTargets() {
-                const alivePlayers = Array.from(this.players.values())
-                        .filter((player) => player.alive)
-                        .sort((a, b) => a.joinOrder - b.joinOrder);
-
-                for (const player of this.players.values()) {
-                        if (!player.spectator) {
-                                player.spectatingId = '';
-                                continue;
-                        }
-                        if (alivePlayers.length <= 0) {
-                                player.spectatingId = '';
-                                player.spectateIndex = 0;
-                                continue;
-                        }
-                        const index = positiveMod(player.spectateIndex, alivePlayers.length);
-                        player.spectateIndex = index;
-                        player.spectatingId = alivePlayers[index].id;
-                }
-        }
-
-        generateSpawnPoints(count) {
-                if (count <= 0) {
-                        return [];
-                }
-                const candidates = shuffle(this.spawnCells.slice());
-                const result = [];
-
-                for (const candidate of candidates) {
-                        if (result.length >= count) {
-                                break;
-                        }
-                        if (this.rectCollidesWall(candidate.x, candidate.y, PLAYER_WIDTH, PLAYER_HEIGHT)) {
-                                continue;
-                        }
-                        let overlaps = false;
-                        for (const picked of result) {
-                                const dx = (picked.x + PLAYER_WIDTH * 0.5) - (candidate.x + PLAYER_WIDTH * 0.5);
-                                const dy = (picked.y + PLAYER_HEIGHT * 0.5) - (candidate.y + PLAYER_HEIGHT * 0.5);
-                                if (dx * dx + dy * dy < 30 * 30) {
-                                        overlaps = true;
-                                        break;
-                                }
-                        }
-                        if (!overlaps) {
-                                result.push(candidate);
-                        }
-                }
-
-                while (result.length < count) {
-                        result.push(this.randomValidSpawn());
-                }
-                return result;
-        }
-
-        randomValidSpawn() {
-                if (this.spawnCells.length > 0) {
-                        const attempts = Math.min(200, this.spawnCells.length * 2);
-                        for (let i = 0; i < attempts; i++) {
-                                const idx = Math.floor(Math.random() * this.spawnCells.length);
-                                const candidate = this.spawnCells[idx];
-                                if (candidate && !this.rectCollidesWall(candidate.x, candidate.y, PLAYER_WIDTH, PLAYER_HEIGHT)) {
-                                        return { x: candidate.x, y: candidate.y };
-                                }
-                        }
-                }
-
-                for (let i = 0; i < 300; i++) {
-                        const x = randomRange(0, Math.max(0, LEVEL.worldWidth - PLAYER_WIDTH));
-                        const y = randomRange(0, Math.max(0, LEVEL.worldHeight - PLAYER_HEIGHT));
-                        if (!this.rectCollidesWall(x, y, PLAYER_WIDTH, PLAYER_HEIGHT)) {
-                                return { x, y };
-                        }
-                }
-
-                return {
-                        x: clamp(LEVEL.worldWidth * 0.5 - PLAYER_WIDTH * 0.5, 0, Math.max(0, LEVEL.worldWidth - PLAYER_WIDTH)),
-                        y: clamp(LEVEL.worldHeight * 0.5 - PLAYER_HEIGHT * 0.5, 0, Math.max(0, LEVEL.worldHeight - PLAYER_HEIGHT))
-                };
-        }
-
-        spawnInitialLoot() {
-                const candidates = shuffle(this.spawnCells.slice());
-                let index = 0;
-
-                const takeCell = () => {
-                        while (index < candidates.length) {
-                                const cell = candidates[index++];
-                                if (!cell) {
-                                        continue;
-                                }
-                                if (this.rectCollidesWall(cell.x - LOOT_SIZE * 0.5, cell.y - LOOT_SIZE * 0.5, LOOT_SIZE, LOOT_SIZE)) {
-                                        continue;
-                                }
-                                return cell;
-                        }
-                        return null;
-                };
-
-                for (const [weaponId, count] of Object.entries(LOOT_SPAWN_COUNTS.weapon)) {
-                        for (let i = 0; i < count; i++) {
-                                const cell = takeCell();
-                                if (!cell) {
-                                        break;
-                                }
-                                this.spawnWeaponLoot(weaponId, cell.x + LOOT_SIZE * 0.5, cell.y + LOOT_SIZE * 0.5);
-                        }
-                }
-
-                for (const [type, count] of Object.entries(LOOT_SPAWN_COUNTS.consumable)) {
-                        for (let i = 0; i < count; i++) {
-                                const cell = takeCell();
-                                if (!cell) {
-                                        break;
-                                }
-                                this.spawnConsumableLoot(type, cell.x + LOOT_SIZE * 0.5, cell.y + LOOT_SIZE * 0.5);
-                        }
-                }
-        }
-
-        spawnWeaponLoot(weaponId, x, y) {
-                if (!WEAPONS[weaponId]) {
-                        return;
-                }
-                this.loot.push({
-                        id: this.nextId('L'),
-                        kind: 'weapon',
-                        weaponId,
-                        x: clamp(x, WORLD_PADDING, LEVEL.worldWidth - WORLD_PADDING),
-                        y: clamp(y, WORLD_PADDING, LEVEL.worldHeight - WORLD_PADDING)
-                });
-        }
-
-        spawnConsumableLoot(type, x, y) {
-                if (type !== 'grenade' && type !== 'drone' && type !== 'airstrike') {
-                        return;
-                }
-                this.loot.push({
-                        id: this.nextId('L'),
-                        kind: 'consumable',
-                        consumableType: type,
-                        x: clamp(x, WORLD_PADDING, LEVEL.worldWidth - WORLD_PADDING),
-                        y: clamp(y, WORLD_PADDING, LEVEL.worldHeight - WORLD_PADDING)
-                });
-        }
-
-        moveEntityWithWalls(entity, dx, dy) {
-                if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-                        return;
-                }
-
-                if (Math.abs(dx) > 0) {
-                        const targetX = clamp(entity.x + dx, 0, Math.max(0, LEVEL.worldWidth - entity.width));
-                        if (!this.rectCollidesWall(targetX, entity.y, entity.width, entity.height)) {
-                                entity.x = targetX;
-                        }
-                }
-
-                if (Math.abs(dy) > 0) {
-                        const targetY = clamp(entity.y + dy, 0, Math.max(0, LEVEL.worldHeight - entity.height));
-                        if (!this.rectCollidesWall(entity.x, targetY, entity.width, entity.height)) {
-                                entity.y = targetY;
-                        }
-                }
-
-                entity.x = clamp(entity.x, 0, Math.max(0, LEVEL.worldWidth - entity.width));
-                entity.y = clamp(entity.y, 0, Math.max(0, LEVEL.worldHeight - entity.height));
-        }
-
-        rectCollidesWall(x, y, width, height) {
-                const rect = rectAt(x, y, width, height);
-                for (const wall of this.wallZones) {
-                        if (rectsOverlap(rect, wall)) {
-                                return true;
-                        }
-                }
-                return false;
-        }
-
-        pointCollidesWall(x, y) {
-                for (const wall of this.wallZones) {
-                        if (x >= wall.left && x <= wall.right && y >= wall.top && y <= wall.bottom) {
-                                return true;
-                        }
-                }
-                return false;
-        }
-
-        buildWallZones() {
-                const zones = [];
-                for (const zone of LEVEL.zones) {
-                        const type = normalize(zone.type);
-                        const name = normalize(zone.name);
-                        if (!type.includes('wall') && !name.includes('wall') && !type.includes('mur') && !name.includes('mur')) {
-                                continue;
-                        }
-                        zones.push(rectAt(zone.x, zone.y, zone.width, zone.height));
-                }
-                return zones;
-        }
-
-        buildSpawnCells() {
-                const cells = [];
-                if (Array.isArray(LEVEL.gemCells) && LEVEL.gemCells.length > 0) {
-                        for (const cell of LEVEL.gemCells) {
-                                cells.push({
-                                        x: clamp(cell.x, 0, Math.max(0, LEVEL.worldWidth - PLAYER_WIDTH)),
-                                        y: clamp(cell.y, 0, Math.max(0, LEVEL.worldHeight - PLAYER_HEIGHT))
-                                });
-                        }
-                        return uniqueCells(cells);
-                }
-
-                const step = 24;
-                for (let y = step; y < LEVEL.worldHeight - step; y += step) {
-                        for (let x = step; x < LEVEL.worldWidth - step; x += step) {
-                                cells.push({
-                                        x: clamp(x, 0, Math.max(0, LEVEL.worldWidth - PLAYER_WIDTH)),
-                                        y: clamp(y, 0, Math.max(0, LEVEL.worldHeight - PLAYER_HEIGHT))
-                                });
-                        }
-                }
-                return uniqueCells(cells);
-        }
-
-        createInitialStorm() {
-                const initialRadius = Math.min(LEVEL.worldWidth, LEVEL.worldHeight) * 0.5;
-                return {
-                        stage: 'waiting',
-                        centerX: LEVEL.worldWidth * 0.5,
-                        centerY: LEVEL.worldHeight * 0.5,
-                        initialRadius,
-                        radius: initialRadius,
-                        damagePerSecond: 0,
-                        stageStartedAt: 0,
-                        stageEndsAt: 0
-                };
-        }
-
-        createPlayer(id) {
-                const spawn = this.randomValidSpawn();
-                return {
-                        id,
-                        name: `Player ${this.players.size + 1}`,
-                        joinOrder: this.nextJoinOrder++,
-                        x: spawn.x,
-                        y: spawn.y,
-                        width: PLAYER_WIDTH,
-                        height: PLAYER_HEIGHT,
-                        move: 'none',
-                        aimX: spawn.x + PLAYER_WIDTH * 0.5,
-                        aimY: spawn.y + PLAYER_HEIGHT * 0.5,
-                        firing: false,
-                        lastFireAt: 0,
-                        reloadEndsAt: 0,
-                        alive: false,
-                        spectator: false,
-                        spectateIndex: 0,
-                        spectatingId: '',
-                        health: PLAYER_MAX_HEALTH,
-                        lastDamageAt: 0,
-                        primaryWeapon: 'pistol',
-                        ammoInMag: WEAPONS.pistol.magazine,
-                        pendingAirstrike: false,
-                        activeDroneId: '',
-                        inventorySlots: new Map(),
-                        kills: 0,
-                        deaths: 0
-                };
-        }
-
-        nextId(prefix) {
-                const value = this.nextEntityId++;
-                return `${prefix}${String(value).padStart(6, '0')}`;
-        }
-
-        consumeInitialState() {
-                if (!this.initialStateDirty) {
-                        return null;
-                }
-                this.initialStateDirty = false;
-                return this.getInitialState();
-        }
-
-        getInitialState() {
-                return {
-                        level: LEVEL.levelName,
-                        worldWidth: round2(LEVEL.worldWidth),
-                        worldHeight: round2(LEVEL.worldHeight),
-                        wallZones: this.wallZones.map((wall) => ({
-                                x: round2(wall.left),
-                                y: round2(wall.top),
-                                width: round2(wall.width),
-                                height: round2(wall.height)
-                        })),
-                        players: Array.from(this.players.values())
-                                .sort((a, b) => a.joinOrder - b.joinOrder)
-                                .map((player) => ({
-                                        id: player.id,
-                                        name: player.name,
-                                        joinOrder: player.joinOrder,
-                                        width: player.width,
-                                        height: player.height
-                                }))
-                };
-        }
-
-        getGameplayState() {
-                const now = Date.now();
-                const countdownSeconds = this.phase === 'waiting' && this.waitingEndsAt != null
-                        ? Math.max(0, Math.ceil((this.waitingEndsAt - now) / 1000))
-                        : 0;
-                const returnToLobbySeconds = this.phase === 'finished' && this.returnToLobbyAt != null
-                        ? Math.max(0, Math.ceil((this.returnToLobbyAt - now) / 1000))
-                        : 0;
-                const stormSecondsToNextStage = this.storm.stageEndsAt
-                        ? Math.max(0, Math.ceil((this.storm.stageEndsAt - now) / 1000))
-                        : 0;
-
-                return {
-                        tickCounter: this.tickCounter,
-                        level: LEVEL.levelName,
-                        worldWidth: round2(LEVEL.worldWidth),
-                        worldHeight: round2(LEVEL.worldHeight),
-                        phase: this.phase,
-                        countdownSeconds,
-                        returnToLobbySeconds,
-                        winnerId: this.winnerId,
-                        winnerName: this.winnerName,
-                        aliveCount: Array.from(this.players.values()).filter((player) => player.alive).length,
-                        storm: {
-                                stage: this.storm.stage,
-                                centerX: round2(this.storm.centerX),
-                                centerY: round2(this.storm.centerY),
-                                radius: round2(this.storm.radius),
-                                damagePerSecond: round2(this.storm.damagePerSecond),
-                                secondsToNextStage: stormSecondsToNextStage
-                        },
-                        players: Array.from(this.players.values())
-                                .sort((a, b) => a.joinOrder - b.joinOrder)
-                                .map((player) => this.serializePlayer(player, now)),
-                        projectiles: this.projectiles.map((projectile) => ({
-                                id: projectile.id,
-                                kind: projectile.kind,
-                                weaponId: projectile.weaponId,
-                                x: round2(projectile.x),
-                                y: round2(projectile.y)
-                        })),
-                        grenades: this.grenades.map((grenade) => ({
-                                id: grenade.id,
-                                x: round2(grenade.x),
-                                y: round2(grenade.y),
-                                ownerId: grenade.ownerId,
-                                secondsToExplode: Math.max(0, round2((grenade.explodeAt - now) / 1000))
-                        })),
-                        drones: this.drones.map((drone) => ({
-                                id: drone.id,
-                                ownerId: drone.ownerId,
-                                x: round2(drone.x),
-                                y: round2(drone.y),
-                                width: drone.width,
-                                height: drone.height,
-                                secondsRemaining: Math.max(0, round2((drone.expiresAt - now) / 1000))
-                        })),
-                        loot: this.loot.map((item) => ({
-                                id: item.id,
-                                kind: item.kind,
-                                weaponId: item.weaponId || '',
-                                consumableType: item.consumableType || '',
-                                x: round2(item.x),
-                                y: round2(item.y)
-                        })),
-                        explosions: this.explosions.map((explosion) => ({
-                                id: explosion.id,
-                                type: explosion.type,
-                                x: round2(explosion.x),
-                                y: round2(explosion.y),
-                                ttlMs: Math.max(0, Math.round(explosion.expiresAt - now))
-                        })),
-                        airstrikeWarnings: this.airstrikeWarnings.map((warning) => ({
-                                id: warning.id,
-                                ownerId: warning.ownerId,
-                                x: round2(warning.x),
-                                y: round2(warning.y),
-                                radius: warning.radius,
-                                secondsToImpact: Math.max(0, round2((warning.explodeAt - now) / 1000))
-                        }))
-                };
-        }
-
-        serializePlayer(player, now) {
-                const weapon = player.primaryWeapon ? WEAPONS[player.primaryWeapon] : null;
-                return {
-                        id: player.id,
-                        name: player.name,
-                        joinOrder: player.joinOrder,
-                        x: round2(player.x),
-                        y: round2(player.y),
-                        width: player.width,
-                        height: player.height,
-                        move: player.move,
-                        aimX: round2(player.aimX),
-                        aimY: round2(player.aimY),
-                        alive: player.alive,
-                        spectator: player.spectator,
-                        spectatingId: player.spectatingId,
-                        health: round2(player.health),
-                        maxHealth: PLAYER_MAX_HEALTH,
-                        primaryWeapon: player.primaryWeapon || '',
-                        ammoInMag: player.ammoInMag,
-                        ammoCapacity: weapon ? weapon.magazine : 0,
-                        reloading: player.reloadEndsAt > now,
-                        reloadRemainingMs: Math.max(0, Math.round(player.reloadEndsAt - now)),
-                        pendingAirstrike: player.pendingAirstrike,
-                        activeDroneId: player.activeDroneId,
-                        kills: player.kills,
-                        deaths: player.deaths,
-                        inventorySlots: Array.from(player.inventorySlots.entries())
-                                .sort((a, b) => a[0] - b[0])
-                                .map(([slot, entry]) => ({
-                                        slot,
-                                        type: entry.type,
-                                        count: entry.count
-                                }))
-                };
-        }
-
-        getFullState() {
-                return {
-                        ...this.getInitialState(),
-                        ...this.getGameplayState()
-                };
-        }
+    }
 }
 
-function normalizeProgress(now, from, to) {
-        const duration = Math.max(1, to - from);
-        return clamp((now - from) / duration, 0, 1);
+function createPathRuntime(path) {
+    if (!path || !Array.isArray(path.points) || path.points.length < 2) {
+        return null;
+    }
+
+    const segments = [];
+    let totalLength = 0;
+    for (let i = 1; i < path.points.length; i++) {
+        const a = path.points[i - 1];
+        const b = path.points[i];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0) {
+            continue;
+        }
+        segments.push({
+            ax: a.x,
+            ay: a.y,
+            bx: b.x,
+            by: b.y,
+            length,
+            startLength: totalLength,
+            endLength: totalLength + length
+        });
+        totalLength += length;
+    }
+
+    if (segments.length <= 0 || totalLength <= 0) {
+        return null;
+    }
+
+    return {
+        firstPointX: path.points[0].x,
+        firstPointY: path.points[0].y,
+        totalLength,
+        segments
+    };
+}
+
+function samplePathAtProgress(pathRuntime, progress) {
+    if (!pathRuntime) {
+        return { x: 0, y: 0 };
+    }
+
+    const clamped = clamp(progress, 0, 1);
+    const targetLength = clamped * pathRuntime.totalLength;
+    for (const segment of pathRuntime.segments) {
+        if (targetLength <= segment.endLength) {
+            const localLength = targetLength - segment.startLength;
+            const alpha = segment.length <= 0 ? 0 : localLength / segment.length;
+            return {
+                x: lerp(segment.ax, segment.bx, alpha),
+                y: lerp(segment.ay, segment.by, alpha)
+            };
+        }
+    }
+
+    const last = pathRuntime.segments[pathRuntime.segments.length - 1];
+    return { x: last.bx, y: last.by };
+}
+
+function pathProgressAtTime(behavior, durationSeconds, timeSeconds) {
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+        return 0;
+    }
+
+    const t = Math.max(0, timeSeconds);
+    const normalizedBehavior = String(behavior || '').trim().toLowerCase();
+    if (normalizedBehavior === 'ping_pong' || normalizedBehavior === 'pingpong') {
+        const cycle = durationSeconds * 2;
+        const cycleTime = t % cycle;
+        if (cycleTime <= durationSeconds) {
+            return cycleTime / durationSeconds;
+        }
+        return 1 - ((cycleTime - durationSeconds) / durationSeconds);
+    }
+    if (normalizedBehavior === 'once') {
+        return clamp(t / durationSeconds, 0, 1);
+    }
+    return (t % durationSeconds) / durationSeconds;
+}
+
+function classifyZoneIndices(tokens, zones) {
+    const indices = [];
+    for (let i = 0; i < zones.length; i++) {
+        const zone = zones[i];
+        const type = normalize(zone.type);
+        const name = normalize(zone.name);
+        if (containsAny(type, tokens) || containsAny(name, tokens)) {
+            indices.push(i);
+        }
+    }
+    return indices;
+}
+
+function resolveFacing(previousFacing, up, down, left, right) {
+    if (up && left) {
+        return 'upLeft';
+    }
+    if (up && right) {
+        return 'upRight';
+    }
+    if (down && left) {
+        return 'downLeft';
+    }
+    if (down && right) {
+        return 'downRight';
+    }
+    if (up) {
+        return 'up';
+    }
+    if (down) {
+        return 'down';
+    }
+    if (left) {
+        return 'left';
+    }
+    if (right) {
+        return 'right';
+    }
+    return previousFacing || 'down';
+}
+
+function comparePlayers(a, b) {
+    if (a.alive !== b.alive) {
+        return a.alive ? -1 : 1;
+    }
+    if (a.alive && b.alive && b.kills !== a.kills) {
+        return b.kills - a.kills;
+    }
+    if (!a.alive && !b.alive && a.placement !== b.placement) {
+        return a.placement - b.placement;
+    }
+    if (b.score !== a.score) {
+        return b.score - a.score;
+    }
+    if (b.gemsCollected !== a.gemsCollected) {
+        return b.gemsCollected - a.gemsCollected;
+    }
+    return a.joinOrder - b.joinOrder;
 }
 
 function sanitizePlayerName(value, fallback) {
-        const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
-        if (!cleaned) {
-                return fallback;
+    const name = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!name) {
+        return fallback;
+    }
+    return name.substring(0, 18);
+}
+
+function findPlayerTemplate(sprites) {
+    for (const sprite of sprites) {
+        const type = normalize(sprite.type);
+        const name = normalize(sprite.name);
+        if (containsAny(type, ['player', 'hero', 'heroi', 'foxy']) ||
+            containsAny(name, ['player', 'hero', 'heroi', 'foxy'])) {
+            return sprite;
         }
-        return cleaned.slice(0, MAX_NAME_LENGTH);
+    }
+    return sprites[0] || null;
 }
 
-function normalizeDirection(value) {
-        const move = String(value || '').trim();
-        if (Object.prototype.hasOwnProperty.call(DIRECTIONS, move)) {
-                return move;
+function buildGemTemplateMap(sprites) {
+    const map = new Map();
+    for (const sprite of sprites) {
+        const type = normalize(sprite.type);
+        if (type.includes('gem purple')) {
+            map.set('purple', sprite);
+        } else if (type.includes('gem yellow')) {
+            map.set('yellow', sprite);
+        } else if (type.includes('gem green')) {
+            map.set('green', sprite);
+        } else if (type.includes('gem blue')) {
+            map.set('blue', sprite);
         }
-        return 'none';
+    }
+    return map;
 }
 
-function clamp(value, min, max) {
-        return Math.max(min, Math.min(max, value));
-}
-
-function round2(value) {
-        return Math.round(value * 100) / 100;
-}
-
-function lerp(from, to, alpha) {
-        return from + (to - from) * alpha;
-}
-
-function degToRad(deg) {
-        return (deg * Math.PI) / 180;
-}
-
-function rectAt(x, y, width, height) {
-        return {
-                left: x,
-                top: y,
-                right: x + width,
-                bottom: y + height,
-                width,
-                height
-        };
-}
-
-function rectsOverlap(a, b) {
-        return a.left < b.right &&
-                a.right > b.left &&
-                a.top < b.bottom &&
-                a.bottom > b.top;
-}
-
-function circleRectOverlap(cx, cy, radius, rect) {
-        const nearestX = clamp(cx, rect.left, rect.right);
-        const nearestY = clamp(cy, rect.top, rect.bottom);
-        const dx = cx - nearestX;
-        const dy = cy - nearestY;
-        return (dx * dx + dy * dy) <= radius * radius;
-}
-
-function distanceBetween(x1, y1, x2, y2) {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        return Math.sqrt(dx * dx + dy * dy);
-}
-
-function normalize(value) {
-        return String(value || '').trim().toLowerCase();
-}
-
-function randomRange(min, max) {
-        return min + Math.random() * (max - min);
-}
-
-function shuffle(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                const temp = array[i];
-                array[i] = array[j];
-                array[j] = temp;
+function resolvePlayerAnimationId(facing, moving) {
+    const animationName = resolvePlayerAnimationName(facing, moving);
+    for (const clip of LEVEL.animationClips.values()) {
+        if (normalize(clip.name) === normalize(animationName)) {
+            return clip.id;
         }
-        return array;
+    }
+    return PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '';
 }
 
-function uniqueCells(cells) {
-        const map = new Map();
-        for (const cell of cells) {
-                const key = `${Math.round(cell.x)}:${Math.round(cell.y)}`;
-                if (!map.has(key)) {
-                        map.set(key, { x: cell.x, y: cell.y });
-                }
-        }
-        return Array.from(map.values());
+function resolvePlayerAnimationName(facing, moving) {
+    switch (facing) {
+    case 'left':
+        return moving ? 'Character  Walk Right' : 'Character Idle Right';
+    case 'upLeft':
+        return moving ? 'Character  Walk Up-Right' : 'Character Idle Up-Right';
+    case 'downLeft':
+        return moving ? 'Character  Walk Down-Right' : 'Character Idle Down-Right';
+    case 'right':
+        return moving ? 'Character  Walk Right' : 'Character Idle Right';
+    case 'upRight':
+        return moving ? 'Character  Walk Up-Right' : 'Character Idle Up-Right';
+    case 'up':
+        return moving ? 'Character  Walk Up' : 'Character Idle Up';
+    case 'downRight':
+        return moving ? 'Character  Walk Down-Right' : 'Character Idle Down-Right';
+    case 'down':
+    default:
+        return moving ? 'Character  Walk Down' : 'Character Idle Down';
+    }
+}
+
+function shouldFlipX(facing) {
+    return facing === 'left' || facing === 'upLeft' || facing === 'downLeft';
+}
+
+function resolveAnimationFrame(animationId, elapsedSeconds) {
+    const clip = LEVEL.animationClips.get(animationId);
+    if (!clip) {
+        return 0;
+    }
+    const start = Math.max(0, clip.startFrame);
+    const end = Math.max(start, clip.endFrame);
+    const span = Math.max(1, end - start + 1);
+    const ticks = Math.floor(Math.max(0, elapsedSeconds) * clip.fps);
+    const offset = clip.loop ? positiveMod(ticks, span) : Math.min(ticks, span - 1);
+    return start + offset;
+}
+
+function resolveClipStartFrame(animationId) {
+    const clip = LEVEL.animationClips.get(animationId);
+    return clip ? Math.max(0, clip.startFrame) : 0;
+}
+
+function activeHitBoxesForClip(clip, frameIndex) {
+    if (!clip) {
+        return null;
+    }
+    const frameRig = clip.frameRigs.get(frameIndex);
+    if (frameRig && frameRig.hitBoxes.length > 0) {
+        return frameRig.hitBoxes;
+    }
+    if (clip.hitBoxes.length > 0) {
+        return clip.hitBoxes;
+    }
+    return null;
+}
+
+function hitBoxRectAt(x, y, width, height, hitBox, flipX, flipY) {
+    let normalizedX = hitBox.x;
+    let normalizedY = hitBox.y;
+    if (flipX) {
+        normalizedX = 1 - hitBox.x - hitBox.width;
+    }
+    if (flipY) {
+        normalizedY = 1 - hitBox.y - hitBox.height;
+    }
+    return rectAt(
+        x + normalizedX * width,
+        y + normalizedY * height,
+        hitBox.width * width,
+        hitBox.height * height
+    );
+}
+
+function unionRects(rects, fallback) {
+    if (!rects || rects.length <= 0) {
+        return fallback;
+    }
+    let minLeft = Number.POSITIVE_INFINITY;
+    let minTop = Number.POSITIVE_INFINITY;
+    let maxRight = Number.NEGATIVE_INFINITY;
+    let maxBottom = Number.NEGATIVE_INFINITY;
+    for (const rect of rects) {
+        minLeft = Math.min(minLeft, rect.left);
+        minTop = Math.min(minTop, rect.top);
+        maxRight = Math.max(maxRight, rect.right);
+        maxBottom = Math.max(maxBottom, rect.bottom);
+    }
+    if (!Number.isFinite(minLeft) || !Number.isFinite(minTop) ||
+        !Number.isFinite(maxRight) || !Number.isFinite(maxBottom)) {
+        return fallback;
+    }
+    return rectAt(minLeft, minTop, maxRight - minLeft, maxBottom - minTop);
 }
 
 function positiveMod(value, divisor) {
-        if (divisor <= 0) {
-                return 0;
+    const mod = value % divisor;
+    return mod < 0 ? mod + divisor : mod;
+}
+
+function normalizeDirection(value) {
+    const direction = String(value || '').trim();
+    return Object.prototype.hasOwnProperty.call(DIRECTIONS, direction)
+        ? direction
+        : 'none';
+}
+
+function rectAt(x, y, width, height) {
+    return {
+        left: x,
+        top: y,
+        right: x + width,
+        bottom: y + height,
+        width,
+        height
+    };
+}
+
+function rectsOverlap(a, b) {
+    return a.left < b.right &&
+        a.right > b.left &&
+        a.top < b.bottom &&
+        a.bottom > b.top;
+}
+
+function approach(current, target, maxDelta) {
+    if (current < target) {
+        return Math.min(current + maxDelta, target);
+    }
+    if (current > target) {
+        return Math.max(current - maxDelta, target);
+    }
+    return target;
+}
+
+function containsAny(value, needles) {
+    for (const needle of needles) {
+        if (needle && value.includes(needle)) {
+            return true;
         }
-        const mod = value % divisor;
-        return mod < 0 ? mod + divisor : mod;
+    }
+    return false;
+}
+
+function normalize(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function lerp(from, to, alpha) {
+    return from + (to - from) * alpha;
+}
+
+function round2(value) {
+    return Math.round(value * 100) / 100;
+}
+
+function shuffle(values) {
+    for (let i = values.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = values[i];
+        values[i] = values[j];
+        values[j] = temp;
+    }
+    return values;
+}
+
+function createEmptyInventory() {
+    return Array.from({ length: MAX_INVENTORY_SLOTS }, () => null);
+}
+
+function createWeaponStack(weaponType) {
+    const config = WEAPON_CATALOG[weaponType] || WEAPON_CATALOG.glock;
+    return {
+        kind: 'weapon',
+        weaponType: config.id,
+        clipAmmo: config.clipSize,
+        reserveAmmo: config.reserveAmmo,
+        maxClipAmmo: config.clipSize
+    };
+}
+
+function serializeInventory(inventory) {
+    return inventory.map((entry) => {
+        if (!entry) {
+            return null;
+        }
+        if (entry.kind !== 'weapon') {
+            return null;
+        }
+        const config = WEAPON_CATALOG[entry.weaponType];
+        return {
+            kind: 'weapon',
+            weaponType: entry.weaponType,
+            clipAmmo: entry.clipAmmo,
+            reserveAmmo: entry.reserveAmmo,
+            maxClipAmmo: entry.maxClipAmmo,
+            label: config ? config.label : entry.weaponType,
+            texturePath: config ? config.texturePath : ''
+        };
+    });
+}
+
+function findFirstFreeSlot(inventory) {
+    for (let i = 0; i < inventory.length; i++) {
+        if (!inventory[i]) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function findFirstFilledSlot(inventory) {
+    for (let i = 0; i < inventory.length; i++) {
+        if (inventory[i]) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+function directionVectorForFacing(facing) {
+    const normalized = DIRECTIONS[facing] || DIRECTIONS.down;
+    return normalizeVector(normalized.dx, normalized.dy);
+}
+
+function normalizeVector(x, y) {
+    const length = Math.sqrt(x * x + y * y);
+    if (length <= 0.000001) {
+        return { x: 0, y: 1 };
+    }
+    return { x: x / length, y: y / length };
+}
+
+function rotateVector(x, y, radians) {
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+        x: x * cos - y * sin,
+        y: x * sin + y * cos
+    };
+}
+
+function randomInRange(min, max) {
+    return min + Math.random() * (max - min);
+}
+
+function pointInsideRect(x, y, rect) {
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 module.exports = GameLogic;
