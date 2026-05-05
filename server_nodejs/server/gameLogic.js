@@ -3,7 +3,7 @@
 const { loadMultiplayerLevel } = require('./multiplayerLevelData.js');
 
 // Lobby countdown length before the server switches the match from waiting to playing.
-const WAITING_DURATION_MS = 60 * 1000;
+const WAITING_DURATION_MS = 15 * 1000;
 // Safety fallback for dt calculation if the measured loop FPS is temporarily unavailable or zero.
 const TARGET_FPS_FALLBACK = 60;
 const PLAYER_WIDTH = 20;
@@ -399,9 +399,10 @@ class GameLogic {
         this.advanceEnvironment(dtSeconds);
 
         if (this.phase === 'waiting') {
-            if (this.lobbyEndsAt == null) {
-                this.startWaitingRoom();
-            }
+                // Start countdown only when there are 2 or more players
+                if (this.lobbyEndsAt == null && this.players.size >= 2) {
+                    this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
+                }
             if (this.lobbyEndsAt != null && Date.now() >= this.lobbyEndsAt) {
                 this.startMatch();
             }
@@ -664,10 +665,12 @@ class GameLogic {
     startWaitingRoom() {
         this.phase = 'waiting';
         this.winnerId = '';
-        this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
+        this.lobbyEndsAt = null;
         this.initialStateDirty = true;
         this.resetEnvironmentRuntime();
-        this.spawnGems();
+        // Do not spawn gems on server for matches (no gems distributed across map)
+        this.gems = [];
+        // Spawn items (weapons/support) but reduce weapon count to 1/5 of previous fraction
         this.spawnItems();
         this.projectiles = [];
         this.positionPlayersForStart();
@@ -761,7 +764,14 @@ class GameLogic {
             this.layerRuntimeStates[targetIndex].y = y;
             return;
         }
+        // Prevent path bindings from moving zones that are classified as walls
         if (targetType === 'zone' && this.zoneRuntimeStates[targetIndex]) {
+            const zone = LEVEL.zones[targetIndex] || {};
+            const type = normalize(zone.type || zone.name || '');
+            if (type.includes('wall') || type.includes('mur')) {
+                // keep walls static
+                return;
+            }
             this.zoneRuntimeStates[targetIndex].x = x;
             this.zoneRuntimeStates[targetIndex].y = y;
         }
@@ -1215,8 +1225,9 @@ class GameLogic {
         if (cells.length <= 0) {
             return;
         }
-
-        const weaponCount = Math.max(10, Math.floor(cells.length * 0.08));
+        // Reduce weapon spawn to 1/5 of previous configured amount
+        const previousWeaponCount = Math.max(10, Math.floor(cells.length * 0.08));
+        const weaponCount = Math.max(2, Math.floor(previousWeaponCount / 5));
         for (let i = 0; i < weaponCount && i < cells.length; i++) {
             const weaponType = WEAPON_SPAWN_TABLE[i % WEAPON_SPAWN_TABLE.length];
             const item = this.createWeaponItem(weaponType, cells[i].x, cells[i].y);

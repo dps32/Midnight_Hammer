@@ -136,7 +136,8 @@ class PlayScreen extends ScreenAdapter {
       viewport,
     );
     _renderGroundItems(batch, appData.items);
-    _renderGems(batch, appData.gems);
+    // Gems are disabled server-side; skip rendering gems to ensure no gems are shown
+    // _renderGems(batch, appData.gems);
     _renderPlayers(batch, appData.sortedPlayers, appData.playerId);
     batch.end();
     _renderProjectiles(appData.projectiles);
@@ -495,23 +496,25 @@ class PlayScreen extends ScreenAdapter {
     final SpriteBatch batch = game.getBatch();
     final BitmapFont font = game.getFont();
     batch.begin();
+    // Use white fonts and align vertically with bars
+    final ui.Color fontColor = titleColor;
     _drawLeftAlignedText(
       batch,
       font,
       'HP ${local.health.round()} / ${local.maxHealth.round()}',
       leftPanelX,
-      healthBarTop - 6,
+      healthBarTop + barHeight - 2,
       0.9,
-      local.health <= 25 ? dangerColor : textColor,
+      local.health <= 25 ? dangerColor : fontColor,
     );
     _drawLeftAlignedText(
       batch,
       font,
       'Shield ${local.shield.round()} / ${local.maxShield.round()}',
       leftPanelX,
-      shieldBarTop - 6,
+      shieldBarTop + barHeight - 2,
       0.9,
-      textColor,
+      fontColor,
     );
     _drawLeftAlignedText(
       batch,
@@ -520,7 +523,7 @@ class PlayScreen extends ScreenAdapter {
       leftPanelX,
       aliveY,
       0.92,
-      dimTextColor,
+      fontColor,
     );
     _drawLeftAlignedText(
       batch,
@@ -529,7 +532,7 @@ class PlayScreen extends ScreenAdapter {
       leftPanelX,
       killsY,
       0.92,
-      dimTextColor,
+      fontColor,
     );
 
     batch.end();
@@ -594,10 +597,12 @@ class PlayScreen extends ScreenAdapter {
         local.equippedSlot < 5) {
       final double selectedX =
           hotbarLeft + local.equippedSlot * (hotbarSlotSize + 8);
+      final InventoryWeaponSlot? selectedSlot = local.equippedSlot < local.inventory.length ? local.inventory[local.equippedSlot] : null;
+      final String labelToShow = equipped.label.isNotEmpty ? equipped.label : (selectedSlot == null ? 'vacio2' : '');
       _drawLeftAlignedText(
         batch,
         font,
-        equipped.label,
+        labelToShow,
         selectedX + 4,
         hotbarTop - 8,
         0.95,
@@ -744,6 +749,9 @@ class PlayScreen extends ScreenAdapter {
       appData.reloadWeapon();
     }
     if (Gdx.input.isKeyJustPressed(Input.keys.q)) {
+      appData.dropWeapon();
+    }
+    if (Gdx.input.isKeyJustPressed(Input.keys.g)) {
       appData.dropWeapon();
     }
     if (Gdx.input.isKeyJustPressed(Input.keys.num1)) {

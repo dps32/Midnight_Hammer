@@ -126,6 +126,7 @@ class KeysData {
   final int r = 46;
   final int e = 33;
   final int q = 45;
+  final int g = 34;
   final int num1 = 8;
   final int num2 = 9;
   final int num3 = 10;
@@ -184,6 +185,9 @@ int? logicalKeyToGdxKey(LogicalKeyboardKey key) {
   }
   if (key == LogicalKeyboardKey.keyR) {
     return Input.keys.r;
+  }
+  if (key == LogicalKeyboardKey.keyG) {
+    return Input.keys.g;
   }
   if (key == LogicalKeyboardKey.keyE) {
     return Input.keys.e;
