@@ -73,6 +73,9 @@ class PlayScreen extends ScreenAdapter {
     levelData = LevelLoader.loadLevel(levelIndex);
     viewport = _createViewport(levelData, camera);
     layerVisibilityStates = _buildInitialLayerVisibility(levelData);
+    if (!game.networkConfig.trainingMode) {
+      _hideDecorativeLayers(layerVisibilityStates, levelData);
+    }
     spriteRuntimeStates = _createHiddenTemplateRuntimes(levelData);
     layerRuntimeStates = _createLayerRuntimeStates(levelData);
     zoneRuntimeStates = _createZoneRuntimeStates(levelData);
@@ -927,6 +930,29 @@ class PlayScreen extends ScreenAdapter {
       data.layers.size,
       (int index) => data.layers.get(index).visible,
     );
+  }
+
+  void _hideDecorativeLayers(List<bool> visibility, LevelData data) {
+    for (int i = 0; i < data.layers.size; i++) {
+      final LevelLayer layer = data.layers.get(i);
+      final String name = normalize(layer.name);
+      if (_isDecorativeLayer(name)) {
+        if (i >= 0 && i < visibility.length) {
+          visibility[i] = false;
+        }
+      }
+    }
+  }
+
+  bool _isDecorativeLayer(String name) {
+    if (name.isEmpty) {
+      return false;
+    }
+    return name.contains('gem') ||
+        name.contains('cloud') ||
+        name.contains('nube') ||
+        name.contains('effect') ||
+        name.contains('fx');
   }
 
   Array<SpriteRuntimeState> _createHiddenTemplateRuntimes(LevelData data) {

@@ -210,6 +210,9 @@ class GameLogic {
                 if (!pathRuntime) {
                     return null;
                 }
+                if (this.shouldIgnorePathBinding(binding)) {
+                    return null;
+                }
                 const initial = this.getInitialTargetPosition(binding.targetType, binding.targetIndex);
                 if (!initial) {
                     return null;
@@ -399,10 +402,14 @@ class GameLogic {
         this.advanceEnvironment(dtSeconds);
 
         if (this.phase === 'waiting') {
-                // Start countdown only when there are 2 or more players
-                if (this.lobbyEndsAt == null && this.players.size >= 2) {
-                    this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
-                }
+            // Start countdown only when there are 2 or more active players
+            if (this.players.size < 2) {
+                this.lobbyEndsAt = null;
+                return;
+            }
+            if (this.lobbyEndsAt == null) {
+                this.lobbyEndsAt = Date.now() + WAITING_DURATION_MS;
+            }
             if (this.lobbyEndsAt != null && Date.now() >= this.lobbyEndsAt) {
                 this.startMatch();
             }
@@ -775,6 +782,25 @@ class GameLogic {
             this.zoneRuntimeStates[targetIndex].x = x;
             this.zoneRuntimeStates[targetIndex].y = y;
         }
+    }
+
+    shouldIgnorePathBinding(binding) {
+        if (!binding) {
+            return false;
+        }
+        const path = LEVEL.paths.find((candidate) => candidate.id === binding.pathId);
+        const pathName = normalize(path ? path.name : '');
+        if (pathName.includes('moving wall') || pathName.includes('wall') || pathName.includes('mur')) {
+            return true;
+        }
+        if (binding.targetType === 'zone') {
+            const zone = LEVEL.zones[binding.targetIndex] || {};
+            const zoneType = normalize(zone.type || zone.name || '');
+            if (zoneType.includes('wall') || zoneType.includes('mur')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     getInitialTargetPosition(targetType, targetIndex) {

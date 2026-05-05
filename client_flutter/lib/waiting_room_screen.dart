@@ -75,6 +75,19 @@ class WaitingRoomScreen extends ScreenAdapter {
         titleColor,
       );
 
+      if (appData.isConnected &&
+          appData.phase == MatchPhase.waiting &&
+          appData.countdownSeconds > 0) {
+        _drawCenteredText(
+          batch,
+          font,
+          'Starts in ${appData.countdownSeconds}s',
+          worldHeight * 0.26,
+          1.35,
+          textColor,
+        );
+      }
+
       // Draw players list header
       _drawLeftAlignedText(
         batch,
