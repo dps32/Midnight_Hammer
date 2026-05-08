@@ -91,6 +91,7 @@ class SpriteBatch {
     bool flipY = false,
     double pivotX = 0.5,
     double pivotY = 0.5,
+    double rotation = 0,
   }) {
     if (!_inBatch) {
       return;
@@ -102,7 +103,9 @@ class SpriteBatch {
           : ui.ColorFilter.mode(_color, ui.BlendMode.modulate)
       ..isAntiAlias = false
       ..filterQuality = ui.FilterQuality.none;
-    if (!flipX && !flipY) {
+
+    final bool needsTransform = flipX || flipY || rotation != 0;
+    if (!needsTransform) {
       canvas.drawImageRect(texture.image, src, dst, paint);
       return;
     }
@@ -111,6 +114,9 @@ class SpriteBatch {
     final double cx = dst.left + dst.width * pivotX;
     final double cy = dst.top + dst.height * pivotY;
     canvas.translate(cx, cy);
+    if (rotation != 0) {
+      canvas.rotate(rotation);
+    }
     canvas.scale(flipX ? -1 : 1, flipY ? -1 : 1);
     canvas.translate(-cx, -cy);
     canvas.drawImageRect(texture.image, src, dst, paint);

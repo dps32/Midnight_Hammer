@@ -64,3 +64,21 @@ flutter build web --release
 ```
 
 Salida: `client_flutter/build/web`
+
+## 5) Scripts de deploy (server_nodejs)
+
+Estos scripts actualizan los assets y el build web dentro del servidor Node.
+
+Copiar assets del cliente al servidor:
+
+```powershell
+cd server_nodejs
+bash ./getAssets.sh
+```
+
+Compilar Flutter web y publicar en `server_nodejs/public`:
+
+```powershell
+cd server_nodejs
+bash ./buildFlutterWeb.sh
+```

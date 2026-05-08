@@ -19,6 +19,11 @@
       "id": "__group_1772789827189273_3",
       "name": "Sand",
       "collapsed": true
+    },
+    {
+      "id": "__group_water",
+      "name": "Water",
+      "collapsed": true
     }
   ],
   "zones": [
@@ -384,6 +389,138 @@
       "height": 16,
       "color": "orange",
       "groupId": "__group_1772789827189273_3"
+    },
+    {
+      "name": "Water Pond 0",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 224,
+      "y": 368,
+      "width": 64,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Pond 1",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 224,
+      "y": 384,
+      "width": 80,
+      "height": 32,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Pond 2",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 240,
+      "y": 416,
+      "width": 64,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 0",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 464,
+      "y": 288,
+      "width": 352,
+      "height": 112,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 1",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 480,
+      "y": 400,
+      "width": 320,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 2",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 496,
+      "y": 416,
+      "width": 272,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 3",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 528,
+      "y": 432,
+      "width": 224,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 4",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 560,
+      "y": 448,
+      "width": 128,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 5",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 576,
+      "y": 272,
+      "width": 224,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 6",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 592,
+      "y": 464,
+      "width": 64,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 7",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 592,
+      "y": 256,
+      "width": 208,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
+    },
+    {
+      "name": "Water Lake 8",
+      "type": "Water",
+      "gameplayData": "",
+      "x": 640,
+      "y": 240,
+      "width": 144,
+      "height": 16,
+      "color": "cyan",
+      "groupId": "__group_water"
     }
   ]
 }

@@ -89,8 +89,6 @@ class GameApp extends Game {
       'levels/media/ak47_2.png',
       'levels/media/escopeta_2.png',
       'levels/media/awp_2.png',
-      'levels/media/DragonDeath.png',
-      'levels/media/gem.png',
     ];
     for (final String assetPath in alwaysNeededBattleRoyaleAssets) {
       if (!queuedAssets.contains(assetPath)) {

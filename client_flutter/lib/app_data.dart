@@ -329,6 +329,7 @@ class _PlayerStaticData {
   final double width;
   final double height;
   final int joinOrder;
+  final int totalKills;
 
   const _PlayerStaticData({
     required this.id,
@@ -336,6 +337,7 @@ class _PlayerStaticData {
     required this.width,
     required this.height,
     required this.joinOrder,
+    this.totalKills = 0,
   });
 }
 
@@ -465,591 +467,134 @@ class _TrainingProjectileState {
   });
 }
 
-class AppData extends ChangeNotifier {
-  static const String _trainingPlayerId = 'LOCAL_TRAINING';
-  static const double _trainingMoveSpeed = 95;
-  static const double _trainingPickupRadius = 42;
+// ---------------------------------------------------------------------------
+// _TrainingSimulator
+// ---------------------------------------------------------------------------
 
-  final WebSocketsHandler _wsHandler = WebSocketsHandler();
-  final int _maxReconnectAttempts = 5;
-  final Duration _reconnectDelay = const Duration(seconds: 3);
+class _TrainingSimulator {
+  static const String _playerId = 'LOCAL_TRAINING';
+  static const double _moveSpeed = 95;
+  static const double _pickupRadius = 42;
 
-  NetworkConfig networkConfig;
-  String playerName;
+  final String playerName;
+  final void Function() onStateChanged;
 
-  bool isConnected = false;
-  bool isConnecting = false;
-  String? playerId;
-  MatchPhase phase = MatchPhase.connecting;
-  String levelName = 'All together now';
-  int countdownSeconds = 60;
-  int remainingGems = 0;
-  int alivePlayers = 0;
-  String? winnerId;
   List<MultiplayerPlayer> players = const <MultiplayerPlayer>[];
-  List<MultiplayerGem> gems = const <MultiplayerGem>[];
   List<GroundItem> items = const <GroundItem>[];
   List<ProjectileSnapshot> projectiles = const <ProjectileSnapshot>[];
   List<RankingEntry> ranking = const <RankingEntry>[];
+  String? get playerId => _playerId;
   List<TransformSnapshot> layerTransforms = const <TransformSnapshot>[];
   List<TransformSnapshot> zoneTransforms = const <TransformSnapshot>[];
 
-  int _reconnectAttempts = 0;
-  bool _intentionalDisconnect = false;
-  bool _disposed = false;
-  String _lastDirection = 'none';
   Map<String, _PlayerStaticData> _playerStaticById =
       const <String, _PlayerStaticData>{};
   Map<String, _PlayerDynamicData> _playerDynamicById =
       const <String, _PlayerDynamicData>{};
-  int _trainingProjectileSeq = 0;
-  int _trainingItemSeq = 0;
-  final List<_TrainingProjectileState> _trainingProjectiles =
+
+  int _projectileSeq = 0;
+  int _itemSeq = 0;
+  final List<_TrainingProjectileState> _activeProjectiles =
       <_TrainingProjectileState>[];
-  double _trainingElapsedSeconds = 0;
-  double _trainingNextShotSeconds = 0;
-  double? _trainingReloadUntilSeconds;
+  double _elapsedSeconds = 0;
+  double _nextShotSeconds = 0;
+  double? _reloadUntilSeconds;
 
-  AppData({NetworkConfig initialConfig = NetworkConfig.defaults})
-    : networkConfig = initialConfig,
-      playerName = initialConfig.playerName {
-    if (networkConfig.trainingMode) {
-      _initializeTrainingSandbox();
-    } else {
-      _connectToWebSocket();
-    }
-  }
+  _TrainingSimulator({required this.playerName, required this.onStateChanged});
 
-  MultiplayerPlayer? get localPlayer {
-    final String? id = playerId;
-    if (id == null || id.isEmpty) {
-      return null;
-    }
-    for (final MultiplayerPlayer player in players) {
-      if (player.id == id) {
-        return player;
-      }
-    }
-    return null;
-  }
+  void initialize() {
+    _projectileSeq = 0;
+    _itemSeq = 0;
+    _elapsedSeconds = 0;
+    _nextShotSeconds = 0;
+    _reloadUntilSeconds = null;
+    _activeProjectiles.clear();
 
-  List<MultiplayerPlayer> get sortedPlayers {
-    final List<MultiplayerPlayer> sorted = List<MultiplayerPlayer>.from(
-      players,
-    );
-    sorted.sort((MultiplayerPlayer a, MultiplayerPlayer b) {
-      if (a.alive != b.alive) {
-        return a.alive ? -1 : 1;
-      }
-      if (a.alive && b.alive) {
-        final int byKills = b.kills.compareTo(a.kills);
-        if (byKills != 0) {
-          return byKills;
-        }
-      } else {
-        final int byPlacement = a.placement.compareTo(b.placement);
-        if (byPlacement != 0) {
-          return byPlacement;
-        }
-      }
-      final int byScore = b.score.compareTo(a.score);
-      if (byScore != 0) {
-        return byScore;
-      }
-      final int byGems = b.gemsCollected.compareTo(a.gemsCollected);
-      if (byGems != 0) {
-        return byGems;
-      }
-      final int byJoinOrder = a.joinOrder.compareTo(b.joinOrder);
-      if (byJoinOrder != 0) {
-        return byJoinOrder;
-      }
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    return sorted;
-  }
+    _playerStaticById = <String, _PlayerStaticData>{
+      _playerId: _PlayerStaticData(
+        id: _playerId,
+        name: playerName,
+        width: 20,
+        height: 20,
+        joinOrder: 0,
+      ),
+    };
 
-  bool get canMove => isConnected && phase == MatchPhase.playing;
+    final List<InventoryWeaponSlot?> inventory = <InventoryWeaponSlot?>[
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
 
-  bool get canRequestMatchRestart =>
-      isConnected && phase == MatchPhase.finished;
+    _playerDynamicById = <String, _PlayerDynamicData>{
+      _playerId: _PlayerDynamicData(
+        id: _playerId,
+        x: 64,
+        y: 64,
+        score: 0,
+        gemsCollected: 0,
+        kills: 0,
+        deaths: 0,
+        placement: 1,
+        alive: true,
+        health: 100,
+        shield: 100,
+        maxHealth: 100,
+        maxShield: 100,
+        recentlyHit: false,
+        aimX: 140,
+        aimY: 140,
+        equippedSlot: 0,
+        inventory: inventory,
+        equippedWeapon: null,
+        direction: 'none',
+        facing: 'down',
+        moving: false,
+        reloading: false,
+      ),
+    };
 
-  MultiplayerPlayer? playerById(String playerId) {
-    for (final MultiplayerPlayer player in players) {
-      if (player.id == playerId) {
-        return player;
-      }
-    }
-    return null;
-  }
-
-  void updateNetworkConfig(NetworkConfig nextConfig) {
-    networkConfig = nextConfig;
-    playerName = nextConfig.playerName;
-    _reconnectAttempts = 0;
-    playerId = null;
-    _lastDirection = 'none';
-    disconnect();
-    if (networkConfig.trainingMode) {
-      _initializeTrainingSandbox();
-    } else {
-      _connectToWebSocket();
-    }
-  }
-
-  void updateMovementDirection(String direction) {
-    final String normalized = _normalizeDirection(direction);
-    if (_lastDirection == normalized) {
-      return;
-    }
-    _lastDirection = normalized;
-    if (networkConfig.trainingMode) {
-      _applyTrainingDirection(normalized);
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'direction', 'value': normalized});
-  }
-
-  void requestMatchRestart() {
-    if (!canRequestMatchRestart) {
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'restartMatch'});
-  }
-
-  void disconnect() {
-    _intentionalDisconnect = true;
-    _lastDirection = 'none';
-    _wsHandler.disconnectFromServer();
-    isConnected = false;
-    isConnecting = false;
-    players = const <MultiplayerPlayer>[];
-    gems = const <MultiplayerGem>[];
-    items = const <GroundItem>[];
+    items = <GroundItem>[
+      _groundWeapon('glock', 120, 80, 0.1),
+      _groundWeapon('smg', 160, 92, 1.2),
+      _groundWeapon('rifle_asalto', 200, 105, 2.1),
+      _groundWeapon('escopeta', 240, 118, 2.9),
+      _groundWeapon('awp', 280, 130, 3.7),
+    ];
     projectiles = const <ProjectileSnapshot>[];
-    ranking = const <RankingEntry>[];
-    _playerStaticById = const <String, _PlayerStaticData>{};
-    _playerDynamicById = const <String, _PlayerDynamicData>{};
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    disconnect();
-    super.dispose();
-  }
-
-  void _connectToWebSocket() {
-    if (_disposed) {
-      return;
-    }
-    if (networkConfig.trainingMode) {
-      _initializeTrainingSandbox();
-      return;
-    }
-    if (_reconnectAttempts >= _maxReconnectAttempts) {
-      if (kDebugMode) {
-        print("S'ha assolit el màxim d'intents de reconnexió.");
-      }
-      return;
-    }
-
-    _intentionalDisconnect = false;
-    isConnecting = true;
-    isConnected = false;
-    phase = MatchPhase.connecting;
-    notifyListeners();
-
-    _wsHandler.connectToServer(
-      networkConfig.serverHost,
-      networkConfig.serverPort,
-      _onWebSocketMessage,
-      useSecureSocket: networkConfig.useSecureWebSocket,
-      onError: _onWebSocketError,
-      onDone: _onWebSocketClosed,
-    );
-  }
-
-  void _onWebSocketMessage(String message) {
-    try {
-      final Object? decoded = jsonDecode(message);
-      if (decoded is! Map) {
-        return;
-      }
-      final Map<String, dynamic> data = _mapFromDynamic(decoded);
-
-      final String type = (data['type'] as String? ?? '').trim();
-      if (type == 'welcome') {
-        playerId = _wsHandler.socketId;
-        isConnected = true;
-        isConnecting = false;
-        _reconnectAttempts = 0;
-        _registerPlayer();
-        notifyListeners();
-        return;
-      }
-
-      if (type == 'snapshot' || type == 'initial') {
-        isConnected = true;
-        isConnecting = false;
-        _reconnectAttempts = 0;
-        final Object? rawSnapshot = data['snapshot'] ?? data['initialState'];
-        _applySnapshotState(
-          rawSnapshot is Map ? _mapFromDynamic(rawSnapshot) : {},
-        );
-        notifyListeners();
-        return;
-      }
-
-      if (type == 'gameplay') {
-        isConnected = true;
-        isConnecting = false;
-        _reconnectAttempts = 0;
-        final Object? rawGameState = data['gameState'];
-        _applyGameplayState(
-          rawGameState is Map ? _mapFromDynamic(rawGameState) : {},
-        );
-        notifyListeners();
-        return;
-      }
-
-      if (type == 'update') {
-        isConnected = true;
-        isConnecting = false;
-        _reconnectAttempts = 0;
-        final Object? rawGameState = data['gameState'];
-        final Map<String, dynamic> gameState = rawGameState is Map
-            ? _mapFromDynamic(rawGameState)
-            : {};
-        _applySnapshotState(gameState);
-        _applyGameplayState(gameState);
-        notifyListeners();
-      }
-    } catch (error) {
-      if (kDebugMode) {
-        print('Error processant missatge WebSocket: $error');
-      }
-    }
-  }
-
-  void _applySnapshotState(Map<String, dynamic> state) {
-    levelName = (state['level'] as String? ?? levelName).trim();
-
-    if (state.containsKey('players')) {
-      final List<dynamic> rawPlayers = state['players'] as List<dynamic>? ?? [];
-      _playerStaticById = <String, _PlayerStaticData>{
-        for (final Map rawPlayer in rawPlayers.whereType<Map>())
-          (_mapFromDynamic(rawPlayer)['id'] as String? ?? '').trim():
-              _staticPlayerFromJson(_mapFromDynamic(rawPlayer)),
-      }..remove('');
-      _playerDynamicById = Map<String, _PlayerDynamicData>.fromEntries(
-        _playerDynamicById.entries.where(
-          (MapEntry<String, _PlayerDynamicData> entry) =>
-              _playerStaticById.containsKey(entry.key),
-        ),
-      );
-    }
-
-    if (state.containsKey('gems')) {
-      gems = _parseGems(state['gems'] as List<dynamic>?);
-    }
-
+    layerTransforms = const <TransformSnapshot>[];
+    zoneTransforms = const <TransformSnapshot>[];
+    ranking = <RankingEntry>[
+      RankingEntry(
+        id: _playerId,
+        name: playerName,
+        alive: true,
+        placement: 1,
+        kills: 0,
+        score: 0,
+      ),
+    ];
     _rebuildPlayers();
   }
 
-  void _applyGameplayState(Map<String, dynamic> state) {
-    levelName = (state['level'] as String? ?? levelName).trim();
-    phase = _parsePhase(state['phase'] as String?);
-    countdownSeconds = (state['countdownSeconds'] as num? ?? 0).toInt();
-    alivePlayers = (state['alivePlayers'] as num? ?? 0).toInt();
-    remainingGems =
-        (state['remainingGems'] as num? ?? state['gems']?.length ?? 0).toInt();
-    winnerId = state['winnerId'] as String?;
-
-    final Map<String, _PlayerDynamicData> nextDynamicById =
-        Map<String, _PlayerDynamicData>.from(_playerDynamicById);
-
-    final Object? rawSelfPlayer = state['selfPlayer'];
-    if (rawSelfPlayer is Map) {
-      final Map<String, dynamic> selfPlayer = _mapFromDynamic(rawSelfPlayer);
-      final String selfId = (selfPlayer['id'] as String? ?? '').trim();
-      if (selfId.isNotEmpty) {
-        nextDynamicById[selfId] = _dynamicPlayerFromJson(selfPlayer);
-      }
-    }
-
-    if (state.containsKey('otherPlayers')) {
-      final String currentPlayerId = (playerId ?? '').trim();
-      nextDynamicById.removeWhere(
-        (String id, _PlayerDynamicData _) => id != currentPlayerId,
-      );
-
-      final List<dynamic> rawOtherPlayers =
-          state['otherPlayers'] as List<dynamic>? ?? [];
-      for (final Map rawPlayer in rawOtherPlayers.whereType<Map>()) {
-        final Map<String, dynamic> parsedPlayer = _mapFromDynamic(rawPlayer);
-        final String id = (parsedPlayer['id'] as String? ?? '').trim();
-        if (id.isEmpty) {
-          continue;
-        }
-        nextDynamicById[id] = _dynamicPlayerFromJson(parsedPlayer);
-      }
-    } else if (state.containsKey('players')) {
-      nextDynamicById
-        ..clear()
-        ..addAll(
-          <String, _PlayerDynamicData>{
-            for (final Map rawPlayer
-                in (state['players'] as List<dynamic>? ?? const <dynamic>[])
-                    .whereType<Map>())
-              (_mapFromDynamic(rawPlayer)['id'] as String? ?? '').trim():
-                  _dynamicPlayerFromJson(_mapFromDynamic(rawPlayer)),
-          }..remove(''),
-        );
-    }
-
-    _playerDynamicById = nextDynamicById;
-
-    if (state.containsKey('gems')) {
-      gems = _parseGems(state['gems'] as List<dynamic>?);
-    }
-    if (state.containsKey('items')) {
-      items = _parseItems(state['items'] as List<dynamic>?);
-    }
-    if (state.containsKey('projectiles')) {
-      projectiles = _parseProjectiles(state['projectiles'] as List<dynamic>?);
-    }
-    if (state.containsKey('ranking')) {
-      ranking = _parseRanking(state['ranking'] as List<dynamic>?);
-    }
-
-    _rebuildPlayers();
-
-    final List<dynamic> rawLayerTransforms =
-        state['layerTransforms'] as List<dynamic>? ?? [];
-    layerTransforms = rawLayerTransforms
-        .whereType<Map>()
-        .map(
-          (Map transform) =>
-              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
-        )
-        .toList(growable: false);
-
-    final List<dynamic> rawZoneTransforms =
-        state['zoneTransforms'] as List<dynamic>? ?? [];
-    zoneTransforms = rawZoneTransforms
-        .whereType<Map>()
-        .map(
-          (Map transform) =>
-              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
-        )
-        .toList(growable: false);
-  }
-
-  _PlayerStaticData _staticPlayerFromJson(Map<String, dynamic> json) {
-    return _PlayerStaticData(
-      id: (json['id'] as String? ?? '').trim(),
-      name: (json['name'] as String? ?? 'Player').trim(),
-      width: (json['width'] as num? ?? 20).toDouble(),
-      height: (json['height'] as num? ?? 20).toDouble(),
-      joinOrder: (json['joinOrder'] as num? ?? 0).toInt(),
-    );
-  }
-
-  _PlayerDynamicData _dynamicPlayerFromJson(Map<String, dynamic> json) {
-    return _PlayerDynamicData(
-      id: (json['id'] as String? ?? '').trim(),
-      x: (json['x'] as num? ?? 0).toDouble(),
-      y: (json['y'] as num? ?? 0).toDouble(),
-      score: (json['score'] as num? ?? 0).toInt(),
-      gemsCollected: (json['gemsCollected'] as num? ?? 0).toInt(),
-      kills: (json['kills'] as num? ?? 0).toInt(),
-      deaths: (json['deaths'] as num? ?? 0).toInt(),
-      placement: (json['placement'] as num? ?? 0).toInt(),
-      alive: json['alive'] as bool? ?? true,
-      health: (json['health'] as num? ?? 100).toDouble(),
-      shield: (json['shield'] as num? ?? 0).toDouble(),
-      maxHealth: (json['maxHealth'] as num? ?? 100).toDouble(),
-      maxShield: (json['maxShield'] as num? ?? 100).toDouble(),
-      recentlyHit: json['recentlyHit'] as bool? ?? false,
-      aimX: (json['aimX'] as num? ?? 0).toDouble(),
-      aimY: (json['aimY'] as num? ?? 0).toDouble(),
-      equippedSlot: (json['equippedSlot'] as num? ?? 0).toInt(),
-      inventory: ((json['inventory'] as List<dynamic>? ?? const <dynamic>[])
-          .map((dynamic value) {
-            if (value is! Map) {
-              return null;
-            }
-            return InventoryWeaponSlot.fromJson(_mapFromDynamic(value));
-          })
-          .toList(growable: false)),
-      equippedWeapon: json['equippedWeapon'] is Map
-          ? EquippedWeapon.fromJson(
-              _mapFromDynamic(json['equippedWeapon'] as Map),
-            )
-          : null,
-      direction: (json['direction'] as String? ?? 'none').trim(),
-      facing: (json['facing'] as String? ?? 'down').trim(),
-      moving: json['moving'] as bool? ?? false,
-      reloading: json['reloading'] as bool? ?? false,
-    );
-  }
-
-  void _rebuildPlayers() {
-    final Set<String> ids = <String>{
-      ..._playerStaticById.keys,
-      ..._playerDynamicById.keys,
-    };
-    players = ids
-        .map((String id) {
-          final _PlayerStaticData? staticData = _playerStaticById[id];
-          final _PlayerDynamicData? dynamicData = _playerDynamicById[id];
-          return MultiplayerPlayer(
-            id: id,
-            name: staticData?.name ?? 'Player',
-            x: dynamicData?.x ?? 0,
-            y: dynamicData?.y ?? 0,
-            width: staticData?.width ?? 20,
-            height: staticData?.height ?? 20,
-            score: dynamicData?.score ?? 0,
-            gemsCollected: dynamicData?.gemsCollected ?? 0,
-            kills: dynamicData?.kills ?? 0,
-            deaths: dynamicData?.deaths ?? 0,
-            placement: dynamicData?.placement ?? 0,
-            alive: dynamicData?.alive ?? true,
-            health: dynamicData?.health ?? 100,
-            shield: dynamicData?.shield ?? 0,
-            maxHealth: dynamicData?.maxHealth ?? 100,
-            maxShield: dynamicData?.maxShield ?? 100,
-            recentlyHit: dynamicData?.recentlyHit ?? false,
-            aimX: dynamicData?.aimX ?? 0,
-            aimY: dynamicData?.aimY ?? 0,
-            equippedSlot: dynamicData?.equippedSlot ?? 0,
-            inventory: dynamicData?.inventory ?? const <InventoryWeaponSlot?>[],
-            equippedWeapon: dynamicData?.equippedWeapon,
-            direction: dynamicData?.direction ?? 'none',
-            facing: dynamicData?.facing ?? 'down',
-            moving: dynamicData?.moving ?? false,
-            reloading: dynamicData?.reloading ?? false,
-            joinOrder: staticData?.joinOrder ?? 0,
-          );
-        })
-        .toList(growable: false);
-  }
-
-  List<MultiplayerGem> _parseGems(List<dynamic>? rawGems) {
-    return (rawGems ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((Map gem) => MultiplayerGem.fromJson(_mapFromDynamic(gem)))
-        .toList(growable: false);
-  }
-
-  List<GroundItem> _parseItems(List<dynamic>? rawItems) {
-    return (rawItems ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((Map item) => GroundItem.fromJson(_mapFromDynamic(item)))
-        .toList(growable: false);
-  }
-
-  List<ProjectileSnapshot> _parseProjectiles(List<dynamic>? rawProjectiles) {
-    return (rawProjectiles ?? const <dynamic>[])
-        .whereType<Map>()
-        .map(
-          (Map projectile) =>
-              ProjectileSnapshot.fromJson(_mapFromDynamic(projectile)),
-        )
-        .toList(growable: false);
-  }
-
-  List<RankingEntry> _parseRanking(List<dynamic>? rawRanking) {
-    return (rawRanking ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((Map entry) => RankingEntry.fromJson(_mapFromDynamic(entry)))
-        .toList(growable: false);
-  }
-
-  void updateAim(double worldX, double worldY) {
-    if (networkConfig.trainingMode) {
-      _applyTrainingAim(worldX, worldY);
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'aim', 'x': worldX, 'y': worldY});
-  }
-
-  void shootAt(double worldX, double worldY) {
-    if (networkConfig.trainingMode) {
-      _applyTrainingShootAt(worldX, worldY);
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'shoot', 'x': worldX, 'y': worldY});
-  }
-
-  void pickupNearestItem() {
-    if (networkConfig.trainingMode) {
-      _applyTrainingPickupNearest();
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'pickup'});
-  }
-
-  void dropWeapon({int? slot}) {
-    if (networkConfig.trainingMode) {
-      _applyTrainingDropWeapon(slot: slot);
-      return;
-    }
-    final Map<String, dynamic> payload = <String, dynamic>{
-      'type': 'dropWeapon',
-    };
-    if (slot != null) {
-      payload['slot'] = slot;
-    }
-    _sendMessage(payload);
-  }
-
-  void reloadWeapon() {
-    if (networkConfig.trainingMode) {
-      _applyTrainingReload();
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'reload'});
-  }
-
-  void selectSlot(int slot) {
-    if (networkConfig.trainingMode) {
-      _applyTrainingSelectSlot(slot);
-      return;
-    }
-    _sendMessage(<String, dynamic>{'type': 'selectSlot', 'slot': slot});
-  }
-
-  void _registerPlayer() {
-    _sendMessage(<String, dynamic>{
-      'type': 'register',
-      'playerName': playerName,
-      'trainingMode': networkConfig.trainingMode,
-    });
-  }
-
-  void tickTraining(
-    double delta, {
-    double worldWidth = 2000,
-    double worldHeight = 2000,
-    List<TrainingWorldRect> blockingRects = const <TrainingWorldRect>[],
-    List<TrainingSlowZone> slowZones = const <TrainingSlowZone>[],
-  }) {
-    if (!networkConfig.trainingMode) {
-      return;
-    }
-    _trainingElapsedSeconds += math.max(0, delta);
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
-    final _PlayerStaticData? staticData = _playerStaticById[_trainingPlayerId];
+  void tick(
+    double delta,
+    double worldWidth,
+    double worldHeight,
+    List<TrainingWorldRect> blockingRects,
+    List<TrainingSlowZone> slowZones,
+  ) {
+    _elapsedSeconds += math.max(0, delta);
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
+    final _PlayerStaticData? staticData = _playerStaticById[_playerId];
     if (current == null || staticData == null) {
       return;
     }
 
-    _completeTrainingReloadIfNeeded(current);
-    final _PlayerDynamicData? afterReload = _playerDynamicById[_trainingPlayerId];
+    _completeReloadIfNeeded(current);
+    final _PlayerDynamicData? afterReload = _playerDynamicById[_playerId];
     final _PlayerDynamicData playerState = afterReload ?? current;
 
     final _DirectionVector vector = _directionVectorFor(playerState.direction);
@@ -1060,7 +605,7 @@ class AppData extends ChangeNotifier {
       staticData.height,
       slowZones,
     );
-    final double step = _trainingMoveSpeed * speedMultiplier * delta;
+    final double step = _moveSpeed * speedMultiplier * delta;
     final double maxX = (worldWidth - staticData.width).clamp(0, double.infinity);
     final double maxY = (worldHeight - staticData.height).clamp(0, double.infinity);
     double nextX = (playerState.x + vector.dx * step).clamp(0, maxX);
@@ -1098,110 +643,20 @@ class AppData extends ChangeNotifier {
 
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         playerState,
         x: nextX,
         y: nextY,
         moving: moving,
       ),
     };
-    _updateTrainingProjectiles(delta, worldWidth: worldWidth, worldHeight: worldHeight);
+    _updateProjectiles(delta, worldWidth: worldWidth, worldHeight: worldHeight);
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _initializeTrainingSandbox() {
-    _intentionalDisconnect = true;
-    _wsHandler.disconnectFromServer();
-    _reconnectAttempts = 0;
-    isConnected = true;
-    isConnecting = false;
-    phase = MatchPhase.playing;
-    levelName = 'Camp de proves';
-    playerId = _trainingPlayerId;
-    alivePlayers = 1;
-    winnerId = null;
-    remainingGems = 0;
-    _trainingProjectileSeq = 0;
-    _trainingItemSeq = 0;
-    _trainingElapsedSeconds = 0;
-    _trainingNextShotSeconds = 0;
-    _trainingReloadUntilSeconds = null;
-    _trainingProjectiles.clear();
-
-    _playerStaticById = <String, _PlayerStaticData>{
-      _trainingPlayerId: _PlayerStaticData(
-        id: _trainingPlayerId,
-        name: playerName,
-        width: 20,
-        height: 20,
-        joinOrder: 0,
-      ),
-    };
-
-    final List<InventoryWeaponSlot?> inventory = <InventoryWeaponSlot?>[
-      null,
-      null,
-      null,
-      null,
-      null,
-    ];
-
-    _playerDynamicById = <String, _PlayerDynamicData>{
-      _trainingPlayerId: _PlayerDynamicData(
-        id: _trainingPlayerId,
-        x: 64,
-        y: 64,
-        score: 0,
-        gemsCollected: 0,
-        kills: 0,
-        deaths: 0,
-        placement: 1,
-        alive: true,
-        health: 100,
-        shield: 100,
-        maxHealth: 100,
-        maxShield: 100,
-        recentlyHit: false,
-        aimX: 140,
-        aimY: 140,
-        equippedSlot: 0,
-        inventory: inventory,
-        equippedWeapon: null,
-        direction: 'none',
-        facing: 'down',
-        moving: false,
-        reloading: false,
-      ),
-    };
-
-    gems = const <MultiplayerGem>[];
-    items = <GroundItem>[
-      _trainingGroundWeapon('glock', 120, 80, 0.1),
-      _trainingGroundWeapon('smg', 160, 92, 1.2),
-      _trainingGroundWeapon('rifle_asalto', 200, 105, 2.1),
-      _trainingGroundWeapon('escopeta', 240, 118, 2.9),
-      _trainingGroundWeapon('awp', 280, 130, 3.7),
-    ];
-    projectiles = const <ProjectileSnapshot>[];
-    layerTransforms = const <TransformSnapshot>[];
-    zoneTransforms = const <TransformSnapshot>[];
-    ranking = <RankingEntry>[
-      RankingEntry(
-        id: _trainingPlayerId,
-        name: playerName,
-        alive: true,
-        placement: 1,
-        kills: 0,
-        score: 0,
-      ),
-    ];
-    _rebuildPlayers();
-    notifyListeners();
-  }
-
-  void _applyTrainingDirection(String direction) {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
+  void applyDirection(String direction) {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
     if (current == null) {
       return;
     }
@@ -1210,7 +665,7 @@ class AppData extends ChangeNotifier {
         : _directionVectorFor(direction).facing;
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         current,
         direction: direction,
         facing: facing,
@@ -1218,25 +673,25 @@ class AppData extends ChangeNotifier {
       ),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _applyTrainingAim(double worldX, double worldY) {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
+  void applyAim(double worldX, double worldY) {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
     if (current == null) {
       return;
     }
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(current, aimX: worldX, aimY: worldY),
+      _playerId: _copyDynamic(current, aimX: worldX, aimY: worldY),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _applyTrainingPickupNearest() {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
-    final _PlayerStaticData? staticData = _playerStaticById[_trainingPlayerId];
+  void pickupNearest() {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
+    final _PlayerStaticData? staticData = _playerStaticById[_playerId];
     if (current == null || staticData == null) {
       return;
     }
@@ -1254,7 +709,7 @@ class AppData extends ChangeNotifier {
       final double dx = ix - centerX;
       final double dy = iy - centerY;
       final double distSq = dx * dx + dy * dy;
-      if (distSq > _trainingPickupRadius * _trainingPickupRadius) {
+      if (distSq > _pickupRadius * _pickupRadius) {
         continue;
       }
       if (distSq < nearestDistSq) {
@@ -1267,7 +722,7 @@ class AppData extends ChangeNotifier {
     }
 
     final GroundItem item = items[nearestIndex];
-    final InventoryWeaponSlot? slotData = _trainingWeaponSlotForType(
+    final InventoryWeaponSlot? slotData = _weaponSlotForType(
       item.weaponType,
       reserveAmmo: item.amount,
     );
@@ -1288,7 +743,7 @@ class AppData extends ChangeNotifier {
     items = nextItems;
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         current,
         inventory: nextInventory,
         equippedSlot: targetSlot,
@@ -1302,12 +757,12 @@ class AppData extends ChangeNotifier {
       ),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _applyTrainingDropWeapon({int? slot}) {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
-    final _PlayerStaticData? staticData = _playerStaticById[_trainingPlayerId];
+  void dropWeapon({int? slot}) {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
+    final _PlayerStaticData? staticData = _playerStaticById[_playerId];
     if (current == null || staticData == null) {
       return;
     }
@@ -1323,7 +778,7 @@ class AppData extends ChangeNotifier {
         List<InventoryWeaponSlot?>.from(current.inventory);
     nextInventory[targetSlot] = null;
 
-    final GroundItem dropped = _trainingGroundWeapon(
+    final GroundItem dropped = _groundWeapon(
       equipped.weaponType,
       current.x + staticData.width * 0.5 + 12,
       current.y + staticData.height * 0.5 + 4,
@@ -1342,7 +797,7 @@ class AppData extends ChangeNotifier {
     items = <GroundItem>[...items, dropped];
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         current,
         inventory: nextInventory,
         equippedSlot: nextEquippedSlot >= 0 ? nextEquippedSlot : 0,
@@ -1358,12 +813,12 @@ class AppData extends ChangeNotifier {
       ),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _applyTrainingShootAt(double worldX, double worldY) {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
-    final _PlayerStaticData? staticData = _playerStaticById[_trainingPlayerId];
+  void shootAt(double worldX, double worldY) {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
+    final _PlayerStaticData? staticData = _playerStaticById[_playerId];
     if (current == null || staticData == null) {
       return;
     }
@@ -1373,15 +828,15 @@ class AppData extends ChangeNotifier {
     if (equipped == null || equipped.clipAmmo <= 0) {
       return;
     }
-    if (_trainingReloadUntilSeconds != null) {
+    if (_reloadUntilSeconds != null) {
       return;
     }
 
-    final _TrainingWeaponStats stats = _trainingWeaponStatsFor(equipped.weaponType);
-    if (_trainingElapsedSeconds < _trainingNextShotSeconds) {
+    final _TrainingWeaponStats stats = _weaponStatsFor(equipped.weaponType);
+    if (_elapsedSeconds < _nextShotSeconds) {
       return;
     }
-    _trainingNextShotSeconds = _trainingElapsedSeconds + stats.fireInterval;
+    _nextShotSeconds = _elapsedSeconds + stats.fireInterval;
 
     final double fromX = current.x + staticData.width * 0.5;
     final double fromY = current.y + staticData.height * 0.5;
@@ -1399,9 +854,9 @@ class AppData extends ChangeNotifier {
       final double shotAngle = baseAngle + angleOffset;
       final double shotDirX = math.cos(shotAngle);
       final double shotDirY = math.sin(shotAngle);
-      _trainingProjectiles.add(
+      _activeProjectiles.add(
         _TrainingProjectileState(
-          id: 'TP${_trainingProjectileSeq++}',
+          id: 'TP${_projectileSeq++}',
           x: fromX + shotDirX * 8,
           y: fromY + shotDirY * 8,
           vx: shotDirX * stats.projectileSpeed,
@@ -1427,7 +882,7 @@ class AppData extends ChangeNotifier {
 
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         current,
         inventory: nextInventory,
         equippedWeapon: EquippedWeapon(
@@ -1440,15 +895,15 @@ class AppData extends ChangeNotifier {
       ),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _applyTrainingReload() {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
+  void reload() {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
     if (current == null) {
       return;
     }
-    if (_trainingReloadUntilSeconds != null) {
+    if (_reloadUntilSeconds != null) {
       return;
     }
     final int slot = current.equippedSlot.clamp(0, 4);
@@ -1461,28 +916,60 @@ class AppData extends ChangeNotifier {
       return;
     }
 
-    final _TrainingWeaponStats stats = _trainingWeaponStatsFor(equipped.weaponType);
-    _trainingReloadUntilSeconds = _trainingElapsedSeconds + stats.reloadSeconds;
+    final _TrainingWeaponStats stats = _weaponStatsFor(equipped.weaponType);
+    _reloadUntilSeconds = _elapsedSeconds + stats.reloadSeconds;
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(current, reloading: true),
+      _playerId: _copyDynamic(current, reloading: true),
     };
     _rebuildPlayers();
-    notifyListeners();
+    onStateChanged();
   }
 
-  void _completeTrainingReloadIfNeeded(_PlayerDynamicData current) {
-    final double? reloadUntil = _trainingReloadUntilSeconds;
-    if (reloadUntil == null || _trainingElapsedSeconds < reloadUntil) {
+  void selectSlot(int slot) {
+    final _PlayerDynamicData? current = _playerDynamicById[_playerId];
+    if (current == null) {
       return;
     }
-    _trainingReloadUntilSeconds = null;
+    final int safeSlot = slot.clamp(0, 4).toInt();
+    final InventoryWeaponSlot? selected = safeSlot < current.inventory.length
+        ? current.inventory[safeSlot]
+        : null;
+    final EquippedWeapon? equipped = selected == null
+        ? null
+        : EquippedWeapon(
+            type: selected.weaponType,
+            label: selected.label,
+            texturePath: selected.texturePath,
+            clipAmmo: selected.clipAmmo,
+            reserveAmmo: selected.reserveAmmo,
+          );
+    _playerDynamicById = <String, _PlayerDynamicData>{
+      ..._playerDynamicById,
+      _playerId: _copyDynamic(
+        current,
+        equippedSlot: safeSlot,
+        equippedWeapon: equipped,
+      ),
+    };
+    _rebuildPlayers();
+    onStateChanged();
+  }
+
+  // ---- private helpers ----
+
+  void _completeReloadIfNeeded(_PlayerDynamicData current) {
+    final double? reloadUntil = _reloadUntilSeconds;
+    if (reloadUntil == null || _elapsedSeconds < reloadUntil) {
+      return;
+    }
+    _reloadUntilSeconds = null;
 
     final int slot = current.equippedSlot.clamp(0, 4);
     if (slot < 0 || slot >= current.inventory.length) {
       _playerDynamicById = <String, _PlayerDynamicData>{
         ..._playerDynamicById,
-        _trainingPlayerId: _copyDynamic(current, reloading: false),
+        _playerId: _copyDynamic(current, reloading: false),
       };
       return;
     }
@@ -1490,7 +977,7 @@ class AppData extends ChangeNotifier {
     if (equipped == null) {
       _playerDynamicById = <String, _PlayerDynamicData>{
         ..._playerDynamicById,
-        _trainingPlayerId: _copyDynamic(current, reloading: false),
+        _playerId: _copyDynamic(current, reloading: false),
       };
       return;
     }
@@ -1499,7 +986,7 @@ class AppData extends ChangeNotifier {
     if (needed <= 0 || equipped.reserveAmmo <= 0) {
       _playerDynamicById = <String, _PlayerDynamicData>{
         ..._playerDynamicById,
-        _trainingPlayerId: _copyDynamic(current, reloading: false),
+        _playerId: _copyDynamic(current, reloading: false),
       };
       return;
     }
@@ -1520,7 +1007,7 @@ class AppData extends ChangeNotifier {
 
     _playerDynamicById = <String, _PlayerDynamicData>{
       ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
+      _playerId: _copyDynamic(
         current,
         inventory: nextInventory,
         equippedWeapon: EquippedWeapon(
@@ -1535,17 +1022,17 @@ class AppData extends ChangeNotifier {
     };
   }
 
-  void _updateTrainingProjectiles(
+  void _updateProjectiles(
     double delta, {
     required double worldWidth,
     required double worldHeight,
   }) {
-    if (_trainingProjectiles.isEmpty) {
+    if (_activeProjectiles.isEmpty) {
       projectiles = const <ProjectileSnapshot>[];
       return;
     }
     final List<_TrainingProjectileState> alive = <_TrainingProjectileState>[];
-    for (final _TrainingProjectileState projectile in _trainingProjectiles) {
+    for (final _TrainingProjectileState projectile in _activeProjectiles) {
       final double stepX = projectile.vx * delta;
       final double stepY = projectile.vy * delta;
       final double traveled = math.sqrt(stepX * stepX + stepY * stepY);
@@ -1566,14 +1053,14 @@ class AppData extends ChangeNotifier {
         ),
       );
     }
-    _trainingProjectiles
+    _activeProjectiles
       ..clear()
       ..addAll(alive);
-    projectiles = _trainingProjectiles
+    projectiles = _activeProjectiles
         .map(
           (_TrainingProjectileState state) => ProjectileSnapshot(
             id: state.id,
-            ownerId: _trainingPlayerId,
+            ownerId: _playerId,
             x: state.x,
             y: state.y,
             radius: 3,
@@ -1582,7 +1069,46 @@ class AppData extends ChangeNotifier {
         .toList(growable: false);
   }
 
-  GroundItem _trainingGroundWeapon(
+  void _rebuildPlayers() {
+    final Set<String> ids = _playerStaticById.keys.toSet();
+    players = ids
+        .map((String id) {
+          final _PlayerStaticData? staticData = _playerStaticById[id];
+          final _PlayerDynamicData? dynamicData = _playerDynamicById[id];
+          return MultiplayerPlayer(
+            id: id,
+            name: staticData?.name ?? 'Player',
+            x: dynamicData?.x ?? 0,
+            y: dynamicData?.y ?? 0,
+            width: staticData?.width ?? 20,
+            height: staticData?.height ?? 20,
+            score: dynamicData?.score ?? 0,
+            gemsCollected: dynamicData?.gemsCollected ?? 0,
+            kills: dynamicData?.kills ?? staticData?.totalKills ?? 0,
+            deaths: dynamicData?.deaths ?? 0,
+            placement: dynamicData?.placement ?? 0,
+            alive: dynamicData?.alive ?? true,
+            health: dynamicData?.health ?? 100,
+            shield: dynamicData?.shield ?? 0,
+            maxHealth: dynamicData?.maxHealth ?? 100,
+            maxShield: dynamicData?.maxShield ?? 100,
+            recentlyHit: dynamicData?.recentlyHit ?? false,
+            aimX: dynamicData?.aimX ?? 0,
+            aimY: dynamicData?.aimY ?? 0,
+            equippedSlot: dynamicData?.equippedSlot ?? 0,
+            inventory: dynamicData?.inventory ?? const <InventoryWeaponSlot?>[],
+            equippedWeapon: dynamicData?.equippedWeapon,
+            direction: dynamicData?.direction ?? 'none',
+            facing: dynamicData?.facing ?? 'down',
+            moving: dynamicData?.moving ?? false,
+            reloading: dynamicData?.reloading ?? false,
+            joinOrder: staticData?.joinOrder ?? 0,
+          );
+        })
+        .toList(growable: false);
+  }
+
+  GroundItem _groundWeapon(
     String weaponType,
     double x,
     double y,
@@ -1590,14 +1116,14 @@ class AppData extends ChangeNotifier {
     int? reserveAmmo,
     int? clipAmmo,
   }) {
-    final InventoryWeaponSlot? slot = _trainingWeaponSlotForType(
+    final InventoryWeaponSlot? slot = _weaponSlotForType(
       weaponType,
       reserveAmmo: reserveAmmo,
       clipAmmo: clipAmmo,
     );
     if (slot == null) {
       return GroundItem(
-        id: 'TI${_trainingItemSeq++}',
+        id: 'TI${_itemSeq++}',
         kind: 'weapon',
         weaponType: weaponType,
         texturePath: 'media/glock_2.png',
@@ -1610,7 +1136,7 @@ class AppData extends ChangeNotifier {
       );
     }
     return GroundItem(
-      id: 'TI${_trainingItemSeq++}',
+      id: 'TI${_itemSeq++}',
       kind: 'weapon',
       weaponType: slot.weaponType,
       texturePath: slot.texturePath,
@@ -1623,7 +1149,7 @@ class AppData extends ChangeNotifier {
     );
   }
 
-  InventoryWeaponSlot? _trainingWeaponSlotForType(
+  InventoryWeaponSlot? _weaponSlotForType(
     String weaponType, {
     int? reserveAmmo,
     int? clipAmmo,
@@ -1684,7 +1210,7 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  _TrainingWeaponStats _trainingWeaponStatsFor(String weaponType) {
+  _TrainingWeaponStats _weaponStatsFor(String weaponType) {
     switch (weaponType) {
       case 'smg':
         return const _TrainingWeaponStats(
@@ -1796,37 +1322,52 @@ class AppData extends ChangeNotifier {
     return -1;
   }
 
-  void _applyTrainingSelectSlot(int slot) {
-    final _PlayerDynamicData? current = _playerDynamicById[_trainingPlayerId];
-    if (current == null) {
-      return;
-    }
-    final int safeSlot = slot.clamp(0, 4).toInt();
-    final InventoryWeaponSlot? selected = safeSlot < current.inventory.length
-        ? current.inventory[safeSlot]
-        : null;
-    final EquippedWeapon? equipped = selected == null
-        ? null
-        : EquippedWeapon(
-            type: selected.weaponType,
-            label: selected.label,
-            texturePath: selected.texturePath,
-            clipAmmo: selected.clipAmmo,
-            reserveAmmo: selected.reserveAmmo,
-          );
-    _playerDynamicById = <String, _PlayerDynamicData>{
-      ..._playerDynamicById,
-      _trainingPlayerId: _copyDynamic(
-        current,
-        equippedSlot: safeSlot,
-        equippedWeapon: equipped,
-      ),
-    };
-    _rebuildPlayers();
-    notifyListeners();
+  static const _noWeapon = Object();
+
+  _PlayerDynamicData _copyDynamic(
+    _PlayerDynamicData source, {
+    double? x,
+    double? y,
+    String? direction,
+    String? facing,
+    bool? moving,
+    bool? reloading,
+    double? aimX,
+    double? aimY,
+    int? equippedSlot,
+    List<InventoryWeaponSlot?>? inventory,
+    Object? equippedWeapon = _noWeapon,
+  }) {
+    return _PlayerDynamicData(
+      id: source.id,
+      x: x ?? source.x,
+      y: y ?? source.y,
+      score: source.score,
+      gemsCollected: source.gemsCollected,
+      kills: source.kills,
+      deaths: source.deaths,
+      placement: source.placement,
+      alive: source.alive,
+      health: source.health,
+      shield: source.shield,
+      maxHealth: source.maxHealth,
+      maxShield: source.maxShield,
+      recentlyHit: source.recentlyHit,
+      aimX: aimX ?? source.aimX,
+      aimY: aimY ?? source.aimY,
+      equippedSlot: equippedSlot ?? source.equippedSlot,
+      inventory: inventory ?? source.inventory,
+      equippedWeapon: identical(equippedWeapon, _noWeapon)
+          ? source.equippedWeapon
+          : equippedWeapon as EquippedWeapon?,
+      direction: direction ?? source.direction,
+      facing: facing ?? source.facing,
+      moving: moving ?? source.moving,
+      reloading: reloading ?? source.reloading,
+    );
   }
 
-  _DirectionVector _directionVectorFor(String direction) {
+  static _DirectionVector _directionVectorFor(String direction) {
     switch (direction) {
       case 'up':
         return const _DirectionVector(0, -1, 'up');
@@ -1849,46 +1390,623 @@ class AppData extends ChangeNotifier {
         return const _DirectionVector(0, 0, 'down');
     }
   }
+}
 
-  _PlayerDynamicData _copyDynamic(
-    _PlayerDynamicData source, {
-    double? x,
-    double? y,
-    String? direction,
-    String? facing,
-    bool? moving,
-    bool? reloading,
-    double? aimX,
-    double? aimY,
-    int? equippedSlot,
-    List<InventoryWeaponSlot?>? inventory,
-    EquippedWeapon? equippedWeapon,
-  }) {
-    return _PlayerDynamicData(
-      id: source.id,
-      x: x ?? source.x,
-      y: y ?? source.y,
-      score: source.score,
-      gemsCollected: source.gemsCollected,
-      kills: source.kills,
-      deaths: source.deaths,
-      placement: source.placement,
-      alive: source.alive,
-      health: source.health,
-      shield: source.shield,
-      maxHealth: source.maxHealth,
-      maxShield: source.maxShield,
-      recentlyHit: source.recentlyHit,
-      aimX: aimX ?? source.aimX,
-      aimY: aimY ?? source.aimY,
-      equippedSlot: equippedSlot ?? source.equippedSlot,
-      inventory: inventory ?? source.inventory,
-      equippedWeapon: equippedWeapon ?? source.equippedWeapon,
-      direction: direction ?? source.direction,
-      facing: facing ?? source.facing,
-      moving: moving ?? source.moving,
-      reloading: reloading ?? source.reloading,
+// ---------------------------------------------------------------------------
+// AppData
+// ---------------------------------------------------------------------------
+
+class AppData extends ChangeNotifier {
+  final WebSocketsHandler _wsHandler = WebSocketsHandler();
+  final int _maxReconnectAttempts = 5;
+  final Duration _reconnectDelay = const Duration(seconds: 3);
+
+  NetworkConfig networkConfig;
+  String playerName;
+
+  bool isConnected = false;
+  bool isConnecting = false;
+  String? playerId;
+  MatchPhase phase = MatchPhase.connecting;
+  String levelName = 'All together now';
+  int countdownSeconds = 60;
+  int remainingGems = 0;
+  int alivePlayers = 0;
+  String? winnerId;
+  List<MultiplayerPlayer> players = const <MultiplayerPlayer>[];
+  List<MultiplayerGem> gems = const <MultiplayerGem>[];
+  List<GroundItem> items = const <GroundItem>[];
+  List<ProjectileSnapshot> projectiles = const <ProjectileSnapshot>[];
+  List<RankingEntry> ranking = const <RankingEntry>[];
+  List<RankingEntry> previousRanking = const <RankingEntry>[];
+  String? previousWinnerId;
+  List<TransformSnapshot> layerTransforms = const <TransformSnapshot>[];
+  List<TransformSnapshot> zoneTransforms = const <TransformSnapshot>[];
+
+  int _reconnectAttempts = 0;
+  bool _intentionalDisconnect = false;
+  bool _disposed = false;
+  String _lastDirection = 'none';
+  Map<String, _PlayerStaticData> _playerStaticById =
+      const <String, _PlayerStaticData>{};
+  Map<String, _PlayerDynamicData> _playerDynamicById =
+      const <String, _PlayerDynamicData>{};
+
+  _TrainingSimulator? _trainingSimulator;
+
+  AppData({NetworkConfig initialConfig = NetworkConfig.defaults})
+    : networkConfig = initialConfig,
+      playerName = initialConfig.playerName {
+    if (networkConfig.trainingMode) {
+      _initializeTrainingSandbox();
+    } else {
+      _connectToWebSocket();
+    }
+  }
+
+  MultiplayerPlayer? get localPlayer {
+    final String? id = playerId;
+    if (id == null || id.isEmpty) {
+      return null;
+    }
+    for (final MultiplayerPlayer player in players) {
+      if (player.id == id) {
+        return player;
+      }
+    }
+    return null;
+  }
+
+  List<MultiplayerPlayer> get sortedPlayers {
+    final List<MultiplayerPlayer> sorted = List<MultiplayerPlayer>.from(
+      players,
     );
+    sorted.sort((MultiplayerPlayer a, MultiplayerPlayer b) {
+      if (a.alive != b.alive) {
+        return a.alive ? -1 : 1;
+      }
+      if (a.alive && b.alive) {
+        final int byKills = b.kills.compareTo(a.kills);
+        if (byKills != 0) {
+          return byKills;
+        }
+      } else {
+        final int byPlacement = a.placement.compareTo(b.placement);
+        if (byPlacement != 0) {
+          return byPlacement;
+        }
+      }
+      final int byScore = b.score.compareTo(a.score);
+      if (byScore != 0) {
+        return byScore;
+      }
+      final int byGems = b.gemsCollected.compareTo(a.gemsCollected);
+      if (byGems != 0) {
+        return byGems;
+      }
+      final int byJoinOrder = a.joinOrder.compareTo(b.joinOrder);
+      if (byJoinOrder != 0) {
+        return byJoinOrder;
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return sorted;
+  }
+
+  bool get canMove => isConnected && phase == MatchPhase.playing;
+
+  bool get canRequestMatchRestart =>
+      isConnected && phase == MatchPhase.finished;
+
+  MultiplayerPlayer? playerById(String playerId) {
+    for (final MultiplayerPlayer player in players) {
+      if (player.id == playerId) {
+        return player;
+      }
+    }
+    return null;
+  }
+
+  void updateNetworkConfig(NetworkConfig nextConfig) {
+    networkConfig = nextConfig;
+    playerName = nextConfig.playerName;
+    _reconnectAttempts = 0;
+    playerId = null;
+    _lastDirection = 'none';
+    disconnect();
+    if (networkConfig.trainingMode) {
+      _initializeTrainingSandbox();
+    } else {
+      _connectToWebSocket();
+    }
+  }
+
+  void updateMovementDirection(String direction) {
+    final String normalized = _normalizeDirection(direction);
+    if (_lastDirection == normalized) {
+      return;
+    }
+    _lastDirection = normalized;
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.applyDirection(normalized);
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'direction', 'value': normalized});
+  }
+
+  void requestMatchRestart() {
+    if (!canRequestMatchRestart) {
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'restartMatch'});
+  }
+
+  void disconnect() {
+    _intentionalDisconnect = true;
+    _lastDirection = 'none';
+    _wsHandler.disconnectFromServer();
+    isConnected = false;
+    isConnecting = false;
+    players = const <MultiplayerPlayer>[];
+    gems = const <MultiplayerGem>[];
+    items = const <GroundItem>[];
+    projectiles = const <ProjectileSnapshot>[];
+    ranking = const <RankingEntry>[];
+    _playerStaticById = const <String, _PlayerStaticData>{};
+    _playerDynamicById = const <String, _PlayerDynamicData>{};
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    disconnect();
+    super.dispose();
+  }
+
+  void _connectToWebSocket() {
+    if (_disposed) {
+      return;
+    }
+    if (networkConfig.trainingMode) {
+      _initializeTrainingSandbox();
+      return;
+    }
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      if (kDebugMode) {
+        print("S'ha assolit el màxim d'intents de reconnexió.");
+      }
+      return;
+    }
+
+    _intentionalDisconnect = false;
+    isConnecting = true;
+    isConnected = false;
+    phase = MatchPhase.connecting;
+    notifyListeners();
+
+    _wsHandler.connectToServer(
+      networkConfig.serverHost,
+      networkConfig.serverPort,
+      _onWebSocketMessage,
+      useSecureSocket: networkConfig.useSecureWebSocket,
+      onError: _onWebSocketError,
+      onDone: _onWebSocketClosed,
+    );
+  }
+
+  void _markConnected() {
+    isConnected = true;
+    isConnecting = false;
+    _reconnectAttempts = 0;
+  }
+
+  void _onWebSocketMessage(String message) {
+    try {
+      final Object? decoded = jsonDecode(message);
+      if (decoded is! Map) {
+        return;
+      }
+      final Map<String, dynamic> data = _mapFromDynamic(decoded);
+
+      final String type = (data['type'] as String? ?? '').trim();
+      if (type == 'welcome') {
+        playerId = _wsHandler.socketId;
+        _markConnected();
+        _registerPlayer();
+        notifyListeners();
+        return;
+      }
+
+      if (type == 'snapshot' || type == 'initial') {
+        _markConnected();
+        final Object? rawSnapshot = data['snapshot'] ?? data['initialState'];
+        _applySnapshotState(
+          rawSnapshot is Map ? _mapFromDynamic(rawSnapshot) : {},
+        );
+        notifyListeners();
+        return;
+      }
+
+      if (type == 'gameplay') {
+        _markConnected();
+        final Object? rawGameState = data['gameState'];
+        _applyGameplayState(
+          rawGameState is Map ? _mapFromDynamic(rawGameState) : {},
+        );
+        notifyListeners();
+        return;
+      }
+
+      if (type == 'update') {
+        _markConnected();
+        final Object? rawGameState = data['gameState'];
+        final Map<String, dynamic> gameState = rawGameState is Map
+            ? _mapFromDynamic(rawGameState)
+            : {};
+        _applySnapshotState(gameState);
+        _applyGameplayState(gameState);
+        notifyListeners();
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        print('Error processant missatge WebSocket: $error');
+      }
+    }
+  }
+
+  void _applySnapshotState(Map<String, dynamic> state) {
+    levelName = (state['level'] as String? ?? levelName).trim();
+
+    if (state.containsKey('players')) {
+      final List<dynamic> rawPlayers = state['players'] as List<dynamic>? ?? [];
+      final Map<String, _PlayerStaticData> nextStatic = <String, _PlayerStaticData>{};
+      for (final Map rawPlayer in rawPlayers.whereType<Map>()) {
+        final Map<String, dynamic> parsed = _mapFromDynamic(rawPlayer);
+        final String id = (parsed['id'] as String? ?? '').trim();
+        if (id.isEmpty) continue;
+        nextStatic[id] = _staticPlayerFromJson(parsed);
+      }
+      _playerStaticById = nextStatic;
+      _playerDynamicById = Map<String, _PlayerDynamicData>.fromEntries(
+        _playerDynamicById.entries.where(
+          (MapEntry<String, _PlayerDynamicData> entry) =>
+              _playerStaticById.containsKey(entry.key),
+        ),
+      );
+    }
+
+    if (state.containsKey('gems')) {
+      gems = _parseGems(state['gems'] as List<dynamic>?);
+    }
+
+    _rebuildPlayers();
+  }
+
+  void _applyGameplayState(Map<String, dynamic> state) {
+    levelName = (state['level'] as String? ?? levelName).trim();
+    final MatchPhase newPhase = _parsePhase(state['phase'] as String?);
+    if (newPhase == MatchPhase.finished && phase != MatchPhase.finished) {
+      previousWinnerId = state['winnerId'] as String?;
+    }
+    phase = newPhase;
+    countdownSeconds = (state['countdownSeconds'] as num? ?? 0).toInt();
+    alivePlayers = (state['alivePlayers'] as num? ?? 0).toInt();
+    remainingGems =
+        (state['remainingGems'] as num? ?? state['gems']?.length ?? 0).toInt();
+    winnerId = state['winnerId'] as String?;
+
+    final Map<String, _PlayerDynamicData> nextDynamicById =
+        Map<String, _PlayerDynamicData>.from(_playerDynamicById);
+
+    final Object? rawSelfPlayer = state['selfPlayer'];
+    if (rawSelfPlayer is Map) {
+      final Map<String, dynamic> selfPlayer = _mapFromDynamic(rawSelfPlayer);
+      final String selfId = (selfPlayer['id'] as String? ?? '').trim();
+      if (selfId.isNotEmpty) {
+        nextDynamicById[selfId] = _dynamicPlayerFromJson(selfPlayer);
+      }
+    }
+
+    if (state.containsKey('otherPlayers')) {
+      final String currentPlayerId = (playerId ?? '').trim();
+      nextDynamicById.removeWhere(
+        (String id, _PlayerDynamicData _) => id != currentPlayerId,
+      );
+
+      final List<dynamic> rawOtherPlayers =
+          state['otherPlayers'] as List<dynamic>? ?? [];
+      for (final Map rawPlayer in rawOtherPlayers.whereType<Map>()) {
+        final Map<String, dynamic> parsedPlayer = _mapFromDynamic(rawPlayer);
+        final String id = (parsedPlayer['id'] as String? ?? '').trim();
+        if (id.isEmpty) {
+          continue;
+        }
+        nextDynamicById[id] = _dynamicPlayerFromJson(parsedPlayer);
+      }
+    } else if (state.containsKey('players')) {
+      nextDynamicById
+        ..clear()
+        ..addAll(
+          <String, _PlayerDynamicData>{
+            for (final Map rawPlayer
+                in (state['players'] as List<dynamic>? ?? const <dynamic>[])
+                    .whereType<Map>())
+              (_mapFromDynamic(rawPlayer)['id'] as String? ?? '').trim():
+                  _dynamicPlayerFromJson(_mapFromDynamic(rawPlayer)),
+          }..remove(''),
+        );
+    }
+
+    _playerDynamicById = nextDynamicById;
+
+    if (state.containsKey('gems')) {
+      gems = _parseGems(state['gems'] as List<dynamic>?);
+    }
+    if (state.containsKey('items')) {
+      items = _parseItems(state['items'] as List<dynamic>?);
+    }
+    if (state.containsKey('projectiles')) {
+      projectiles = _parseProjectiles(state['projectiles'] as List<dynamic>?);
+    }
+    if (state.containsKey('ranking')) {
+      ranking = _parseRanking(state['ranking'] as List<dynamic>?);
+      if (phase == MatchPhase.finished && ranking.isNotEmpty) {
+        previousRanking = ranking;
+      }
+    }
+
+    _rebuildPlayers();
+
+    final List<dynamic> rawLayerTransforms =
+        state['layerTransforms'] as List<dynamic>? ?? [];
+    layerTransforms = rawLayerTransforms
+        .whereType<Map>()
+        .map(
+          (Map transform) =>
+              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
+        )
+        .toList(growable: false);
+
+    final List<dynamic> rawZoneTransforms =
+        state['zoneTransforms'] as List<dynamic>? ?? [];
+    zoneTransforms = rawZoneTransforms
+        .whereType<Map>()
+        .map(
+          (Map transform) =>
+              TransformSnapshot.fromJson(_mapFromDynamic(transform)),
+        )
+        .toList(growable: false);
+  }
+
+  _PlayerStaticData _staticPlayerFromJson(Map<String, dynamic> json) {
+    return _PlayerStaticData(
+      id: (json['id'] as String? ?? '').trim(),
+      name: (json['name'] as String? ?? 'Player').trim(),
+      width: (json['width'] as num? ?? 20).toDouble(),
+      height: (json['height'] as num? ?? 20).toDouble(),
+      joinOrder: (json['joinOrder'] as num? ?? 0).toInt(),
+      totalKills: (json['kills'] as num? ?? 0).toInt(),
+    );
+  }
+
+  _PlayerDynamicData _dynamicPlayerFromJson(Map<String, dynamic> json) {
+    return _PlayerDynamicData(
+      id: (json['id'] as String? ?? '').trim(),
+      x: (json['x'] as num? ?? 0).toDouble(),
+      y: (json['y'] as num? ?? 0).toDouble(),
+      score: (json['score'] as num? ?? 0).toInt(),
+      gemsCollected: (json['gemsCollected'] as num? ?? 0).toInt(),
+      kills: (json['kills'] as num? ?? 0).toInt(),
+      deaths: (json['deaths'] as num? ?? 0).toInt(),
+      placement: (json['placement'] as num? ?? 0).toInt(),
+      alive: json['alive'] as bool? ?? true,
+      health: (json['health'] as num? ?? 100).toDouble(),
+      shield: (json['shield'] as num? ?? 0).toDouble(),
+      maxHealth: (json['maxHealth'] as num? ?? 100).toDouble(),
+      maxShield: (json['maxShield'] as num? ?? 100).toDouble(),
+      recentlyHit: json['recentlyHit'] as bool? ?? false,
+      aimX: (json['aimX'] as num? ?? 0).toDouble(),
+      aimY: (json['aimY'] as num? ?? 0).toDouble(),
+      equippedSlot: (json['equippedSlot'] as num? ?? 0).toInt(),
+      inventory: ((json['inventory'] as List<dynamic>? ?? const <dynamic>[])
+          .map((dynamic value) {
+            if (value is! Map) {
+              return null;
+            }
+            return InventoryWeaponSlot.fromJson(_mapFromDynamic(value));
+          })
+          .toList(growable: false)),
+      equippedWeapon: json['equippedWeapon'] is Map
+          ? EquippedWeapon.fromJson(
+              _mapFromDynamic(json['equippedWeapon'] as Map),
+            )
+          : null,
+      direction: (json['direction'] as String? ?? 'none').trim(),
+      facing: (json['facing'] as String? ?? 'down').trim(),
+      moving: json['moving'] as bool? ?? false,
+      reloading: json['reloading'] as bool? ?? false,
+    );
+  }
+
+  void _rebuildPlayers() {
+    final Set<String> ids = _playerStaticById.keys.toSet();
+    players = ids
+        .map((String id) {
+          final _PlayerStaticData? staticData = _playerStaticById[id];
+          final _PlayerDynamicData? dynamicData = _playerDynamicById[id];
+          return MultiplayerPlayer(
+            id: id,
+            name: staticData?.name ?? 'Player',
+            x: dynamicData?.x ?? 0,
+            y: dynamicData?.y ?? 0,
+            width: staticData?.width ?? 20,
+            height: staticData?.height ?? 20,
+            score: dynamicData?.score ?? 0,
+            gemsCollected: dynamicData?.gemsCollected ?? 0,
+            kills: dynamicData?.kills ?? staticData?.totalKills ?? 0,
+            deaths: dynamicData?.deaths ?? 0,
+            placement: dynamicData?.placement ?? 0,
+            alive: dynamicData?.alive ?? true,
+            health: dynamicData?.health ?? 100,
+            shield: dynamicData?.shield ?? 0,
+            maxHealth: dynamicData?.maxHealth ?? 100,
+            maxShield: dynamicData?.maxShield ?? 100,
+            recentlyHit: dynamicData?.recentlyHit ?? false,
+            aimX: dynamicData?.aimX ?? 0,
+            aimY: dynamicData?.aimY ?? 0,
+            equippedSlot: dynamicData?.equippedSlot ?? 0,
+            inventory: dynamicData?.inventory ?? const <InventoryWeaponSlot?>[],
+            equippedWeapon: dynamicData?.equippedWeapon,
+            direction: dynamicData?.direction ?? 'none',
+            facing: dynamicData?.facing ?? 'down',
+            moving: dynamicData?.moving ?? false,
+            reloading: dynamicData?.reloading ?? false,
+            joinOrder: staticData?.joinOrder ?? 0,
+          );
+        })
+        .toList(growable: false);
+  }
+
+  // ---- Generic parse helper ----
+
+  List<T> _parseList<T>(
+    List<dynamic>? raw,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    return (raw ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((Map entry) => fromJson(_mapFromDynamic(entry)))
+        .toList(growable: false);
+  }
+
+  List<MultiplayerGem> _parseGems(List<dynamic>? raw) =>
+      _parseList(raw, MultiplayerGem.fromJson);
+
+  List<GroundItem> _parseItems(List<dynamic>? raw) =>
+      _parseList(raw, GroundItem.fromJson);
+
+  List<ProjectileSnapshot> _parseProjectiles(List<dynamic>? raw) =>
+      _parseList(raw, ProjectileSnapshot.fromJson);
+
+  List<RankingEntry> _parseRanking(List<dynamic>? raw) =>
+      _parseList(raw, RankingEntry.fromJson);
+
+  // ---- Training delegation ----
+
+  void updateAim(double worldX, double worldY) {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.applyAim(worldX, worldY);
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'aim', 'x': worldX, 'y': worldY});
+  }
+
+  void shootAt(double worldX, double worldY) {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.shootAt(worldX, worldY);
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'shoot', 'x': worldX, 'y': worldY});
+  }
+
+  void pickupNearestItem() {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.pickupNearest();
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'pickup'});
+  }
+
+  void dropWeapon({int? slot}) {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.dropWeapon(slot: slot);
+      return;
+    }
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'type': 'dropWeapon',
+    };
+    if (slot != null) {
+      payload['slot'] = slot;
+    }
+    _sendMessage(payload);
+  }
+
+  void reloadWeapon() {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.reload();
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'reload'});
+  }
+
+  void selectSlot(int slot) {
+    if (networkConfig.trainingMode) {
+      _trainingSimulator?.selectSlot(slot);
+      return;
+    }
+    _sendMessage(<String, dynamic>{'type': 'selectSlot', 'slot': slot});
+  }
+
+  void _registerPlayer() {
+    _sendMessage(<String, dynamic>{
+      'type': 'register',
+      'playerName': playerName,
+      'trainingMode': networkConfig.trainingMode,
+    });
+  }
+
+  void tickTraining(
+    double delta, {
+    double worldWidth = 2000,
+    double worldHeight = 2000,
+    List<TrainingWorldRect> blockingRects = const <TrainingWorldRect>[],
+    List<TrainingSlowZone> slowZones = const <TrainingSlowZone>[],
+  }) {
+    if (!networkConfig.trainingMode) {
+      return;
+    }
+    // tick() calls onStateChanged which invokes _onTrainingStateChanged,
+    // so sync + notifyListeners are handled there.
+    _trainingSimulator?.tick(delta, worldWidth, worldHeight, blockingRects, slowZones);
+  }
+
+  void _initializeTrainingSandbox() {
+    _intentionalDisconnect = true;
+    _wsHandler.disconnectFromServer();
+    _reconnectAttempts = 0;
+    isConnected = true;
+    isConnecting = false;
+    phase = MatchPhase.playing;
+    levelName = 'Camp de proves';
+    alivePlayers = 1;
+    winnerId = null;
+    remainingGems = 0;
+
+    _trainingSimulator = _TrainingSimulator(
+      playerName: playerName,
+      onStateChanged: _onTrainingStateChanged,
+    );
+    _trainingSimulator!.initialize();
+    _syncFromTrainingSimulator();
+    notifyListeners();
+  }
+
+  void _onTrainingStateChanged() {
+    _syncFromTrainingSimulator();
+    notifyListeners();
+  }
+
+  void _syncFromTrainingSimulator() {
+    final _TrainingSimulator? sim = _trainingSimulator;
+    if (sim == null) return;
+    players = sim.players;
+    items = sim.items;
+    projectiles = sim.projectiles;
+    ranking = sim.ranking;
+    playerId = sim.playerId;
+    layerTransforms = sim.layerTransforms;
+    zoneTransforms = sim.zoneTransforms;
   }
 
   void _onWebSocketError(dynamic error) {

@@ -82,7 +82,7 @@ ws.onConnection = (socket, id) => {
     queueSnapshotToClient(socket, id, game.getSnapshotState());
     queueGameplayStateToClient(socket, id, {
       includeOtherPlayers: true,
-      includeGems: true
+      includeGems: false
     });
 };
 
@@ -128,7 +128,7 @@ function shutDown() {
 function broadcastGameState() {
   const snapshot = game.consumeSnapshotState();
   const includeOtherPlayers = snapshot ? true : gameplayBroadcastIndex % 2 === 0;
-  const includeGems = snapshot ? true : !includeOtherPlayers;
+  const includeGems = false;
 
   if (snapshot) {
     ws.forEachClient((socket, id) => {

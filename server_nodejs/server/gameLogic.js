@@ -22,6 +22,7 @@ const PICKUP_RADIUS = 34;
 const PROJECTILE_RADIUS = 3;
 const PLAYER_FIRE_POINT_OFFSET = 8;
 const PLAYER_MAX_COUNT = 64;
+const DISABLE_ENVIRONMENT_MOTION = true;
 
 const MOVE_SPEED_PER_SECOND = 95;
 const DIAGONAL_NORMALIZE = 0.70710677;
@@ -30,6 +31,7 @@ const NORMAL_DECELERATION_PER_SECOND = 1200;
 const ICE_ACCELERATION_PER_SECOND = 230;
 const ICE_DECELERATION_PER_SECOND = 75;
 const SAND_SPEED_MULTIPLIER = 0.48;
+const WATER_SPEED_MULTIPLIER = 0.45;
 const MOVEMENT_DIRECTION_THRESHOLD = 2;
 const VELOCITY_STOP_THRESHOLD = 0.5;
 const MAX_COLLISION_SLIDE_ITERATIONS = 4;
@@ -52,8 +54,8 @@ const GEM_VALUES = {
 };
 
 const ITEM_COUNTS = {
-    health: 28,
-    shield: 22
+    health: 0,
+    shield: 0
 };
 
 const WEAPON_CATALOG = {
@@ -165,6 +167,14 @@ const LEVEL = loadMultiplayerLevel();
 const PLAYER_TEMPLATE = findPlayerTemplate(LEVEL.sprites);
 const GEM_TEMPLATE_BY_TYPE = buildGemTemplateMap(LEVEL.sprites);
 
+// Precomputed index: normalized clip name -> animationId. Avoids linear scan per frame.
+const ANIMATION_ID_BY_NAME = new Map(
+    Array.from(LEVEL.animationClips.entries()).map(([id, clip]) => [normalize(clip.name), id])
+);
+
+// Cache for activeHitBoxesForClip results keyed by "animationId:frameIndex".
+const HITBOX_CACHE = new Map();
+
 class GameLogic {
     constructor() {
         this.players = new Map();
@@ -226,9 +236,14 @@ class GameLogic {
             })
             .filter(Boolean);
 
+        this._buildZoneIndices();
+    }
+
+    _buildZoneIndices() {
         this.wallZoneIndices = classifyZoneIndices(['mur', 'wall'], LEVEL.zones);
         this.iceZoneIndices = classifyZoneIndices(['ice', 'gel', 'hielo'], LEVEL.zones);
         this.sandZoneIndices = classifyZoneIndices(['sand', 'sorra', 'arena'], LEVEL.zones);
+        this.waterZoneIndices = classifyZoneIndices(['water', 'agua'], LEVEL.zones);
     }
 
     addClient(id) {
@@ -250,6 +265,7 @@ class GameLogic {
             score: 0,
             gemsCollected: 0,
             kills: 0,
+            totalKills: 0,
             deaths: 0,
             placement: 0,
             alive: true,
@@ -426,54 +442,7 @@ class GameLogic {
                 player.direction = 'none';
                 continue;
             }
-            this.applyMovingWallCarry(player);
-            this.resolveWallPenetration(player);
-
-            const direction = DIRECTIONS[player.direction] || DIRECTIONS.none;
-            const onIce = this.playerOverlapsAnyZone(player, this.iceZoneIndices);
-            const onSand = this.playerOverlapsAnyZone(player, this.sandZoneIndices);
-            const speedMultiplier = onSand ? SAND_SPEED_MULTIPLIER : 1;
-            const targetVelocityX = direction.dx * MOVE_SPEED_PER_SECOND * speedMultiplier;
-            const targetVelocityY = direction.dy * MOVE_SPEED_PER_SECOND * speedMultiplier;
-            const hasInput = player.direction !== 'none';
-            const acceleration = onIce
-                ? ICE_ACCELERATION_PER_SECOND
-                : NORMAL_ACCELERATION_PER_SECOND;
-            const deceleration = onIce
-                ? ICE_DECELERATION_PER_SECOND
-                : NORMAL_DECELERATION_PER_SECOND;
-            const maxVelocityDelta = (hasInput ? acceleration : deceleration) * dtSeconds;
-
-            player.velocityX = approach(player.velocityX, targetVelocityX, maxVelocityDelta);
-            player.velocityY = approach(player.velocityY, targetVelocityY, maxVelocityDelta);
-            if (Math.abs(player.velocityX) < VELOCITY_STOP_THRESHOLD) {
-                player.velocityX = 0;
-            }
-            if (Math.abs(player.velocityY) < VELOCITY_STOP_THRESHOLD) {
-                player.velocityY = 0;
-            }
-
-            const movingLeft = player.velocityX < -MOVEMENT_DIRECTION_THRESHOLD;
-            const movingRight = player.velocityX > MOVEMENT_DIRECTION_THRESHOLD;
-            const movingUp = player.velocityY < -MOVEMENT_DIRECTION_THRESHOLD;
-            const movingDown = player.velocityY > MOVEMENT_DIRECTION_THRESHOLD;
-            player.facing = resolveFacing(player.facing, movingUp, movingDown, movingLeft, movingRight);
-            player.flipX = shouldFlipX(player.facing);
-            player.animationId = resolvePlayerAnimationId(player.facing, player.moving);
-            player.frameIndex = resolveAnimationFrame(player.animationId, this.tickCounter / safeFps);
-
-            const previousX = player.x;
-            const previousY = player.y;
-            const dx = player.velocityX * dtSeconds;
-            const dy = player.velocityY * dtSeconds;
-            this.movePlayerWithWallCollisions(player, previousX, previousY, dx, dy);
-            this.collectTouchedGems(player);
-            this.consumeTouchingSupportItems(player);
-
-            const hasDirectionalVelocity =
-                Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD ||
-                Math.abs(player.velocityY) > MOVEMENT_DIRECTION_THRESHOLD;
-            player.moving = hasInput && hasDirectionalVelocity;
+            this._applyPlayerPhysics(player, dtSeconds, safeFps);
         }
 
         this.updateProjectiles(dtSeconds, this.tickCounter / safeFps);
@@ -482,6 +451,54 @@ class GameLogic {
         if (alivePlayers.length <= 1 && this.players.size > 1) {
             this.finishMatch();
         }
+    }
+
+    _applyPlayerPhysics(player, dtSeconds, safeFps) {
+        this.applyMovingWallCarry(player);
+        this.resolveWallPenetration(player);
+
+        const direction = DIRECTIONS[player.direction] || DIRECTIONS.none;
+        const onIce = this.playerOverlapsAnyZone(player, this.iceZoneIndices);
+        const onSand = this.playerOverlapsAnyZone(player, this.sandZoneIndices);
+        const onWater = this.playerOverlapsAnyZone(player, this.waterZoneIndices);
+        const speedMultiplier = onWater ? WATER_SPEED_MULTIPLIER : onSand ? SAND_SPEED_MULTIPLIER : 1;
+        const targetVelocityX = direction.dx * MOVE_SPEED_PER_SECOND * speedMultiplier;
+        const targetVelocityY = direction.dy * MOVE_SPEED_PER_SECOND * speedMultiplier;
+        const hasInput = player.direction !== 'none';
+        const acceleration = onIce ? ICE_ACCELERATION_PER_SECOND : NORMAL_ACCELERATION_PER_SECOND;
+        const deceleration = onIce ? ICE_DECELERATION_PER_SECOND : NORMAL_DECELERATION_PER_SECOND;
+        const maxVelocityDelta = (hasInput ? acceleration : deceleration) * dtSeconds;
+
+        player.velocityX = approach(player.velocityX, targetVelocityX, maxVelocityDelta);
+        player.velocityY = approach(player.velocityY, targetVelocityY, maxVelocityDelta);
+        if (Math.abs(player.velocityX) < VELOCITY_STOP_THRESHOLD) {
+            player.velocityX = 0;
+        }
+        if (Math.abs(player.velocityY) < VELOCITY_STOP_THRESHOLD) {
+            player.velocityY = 0;
+        }
+
+        const movingLeft = player.velocityX < -MOVEMENT_DIRECTION_THRESHOLD;
+        const movingRight = player.velocityX > MOVEMENT_DIRECTION_THRESHOLD;
+        const movingUp = player.velocityY < -MOVEMENT_DIRECTION_THRESHOLD;
+        const movingDown = player.velocityY > MOVEMENT_DIRECTION_THRESHOLD;
+        player.facing = resolveFacing(player.facing, movingUp, movingDown, movingLeft, movingRight);
+        player.flipX = shouldFlipX(player.facing);
+        player.animationId = resolvePlayerAnimationId(player.facing, player.moving);
+        player.frameIndex = resolveAnimationFrame(player.animationId, this.tickCounter / safeFps);
+
+        const previousX = player.x;
+        const previousY = player.y;
+        const dx = player.velocityX * dtSeconds;
+        const dy = player.velocityY * dtSeconds;
+        this.movePlayerWithWallCollisions(player, previousX, previousY, dx, dy);
+        this.collectTouchedGems(player);
+        this.consumeTouchingSupportItems(player);
+
+        const hasDirectionalVelocity =
+            Math.abs(player.velocityX) > MOVEMENT_DIRECTION_THRESHOLD ||
+            Math.abs(player.velocityY) > MOVEMENT_DIRECTION_THRESHOLD;
+        player.moving = hasInput && hasDirectionalVelocity;
     }
 
     consumeSnapshotState() {
@@ -496,22 +513,8 @@ class GameLogic {
         const players = Array.from(this.players.values()).sort(comparePlayers);
         return {
             level: LEVEL.levelName,
-            players: players.map((player) => ({
-                id: player.id,
-                name: player.name,
-                width: player.width,
-                height: player.height,
-                joinOrder: player.joinOrder
-            })),
-            gems: this.gems.map((gem) => ({
-                id: gem.id,
-                type: gem.type,
-                x: round2(gem.x),
-                y: round2(gem.y),
-                width: gem.width,
-                height: gem.height,
-                value: gem.value
-            }))
+            players: players.map((player) => StateSerializer.snapshotPlayer(player)),
+            gems: this.gems.map((gem) => StateSerializer.snapshotGem(gem))
         };
     }
 
@@ -589,84 +592,33 @@ class GameLogic {
     }
 
     serializeGameplayPlayer(player) {
-        return {
-            id: player.id,
-            x: round2(player.x),
-            y: round2(player.y),
-            score: player.score,
-            gemsCollected: player.gemsCollected,
-            kills: player.kills,
-            deaths: player.deaths,
-            placement: player.placement,
-            alive: player.alive,
-            health: round2(player.health),
-            shield: round2(player.shield),
-            maxHealth: player.maxHealth,
-            maxShield: player.maxShield,
-            recentlyHit: this.tickCounter - player.recentHitAtTick <= 8,
-            aimX: round2(player.aimX),
-            aimY: round2(player.aimY),
-            equippedSlot: player.equippedSlot,
-            inventory: serializeInventory(player.inventory),
-            equippedWeapon: this.getEquippedWeaponState(player),
-            direction: player.direction,
-            facing: player.facing,
-            moving: player.moving,
-        };
+        return StateSerializer.gameplayPlayer(
+            player,
+            this.tickCounter,
+            this.getEquippedWeaponState(player)
+        );
     }
 
     getVisibleGems() {
         return this.gems
             .filter((gem) => gem.visible)
-            .map((gem) => ({
-                id: gem.id,
-                type: gem.type,
-                x: round2(gem.x),
-                y: round2(gem.y),
-                width: gem.width,
-                height: gem.height,
-                value: gem.value
-            }));
+            .map((gem) => StateSerializer.visibleGem(gem));
     }
 
     getVisibleItems() {
         return this.items
             .filter((item) => item.visible)
-            .map((item) => ({
-                id: item.id,
-                kind: item.kind,
-                weaponType: item.weaponType || '',
-                x: round2(item.x),
-                y: round2(item.y),
-                width: item.width,
-                height: item.height,
-                amount: item.amount || 0,
-                texturePath: item.texturePath || '',
-                floatPhase: round2(item.floatPhase || 0)
-            }));
+            .map((item) => StateSerializer.visibleItem(item));
     }
 
     getVisibleProjectiles() {
         return this.projectiles
             .filter((projectile) => projectile.visible)
-            .map((projectile) => ({
-                id: projectile.id,
-                ownerId: projectile.ownerId,
-                x: round2(projectile.x),
-                y: round2(projectile.y),
-                radius: projectile.radius
-            }));
+            .map((projectile) => StateSerializer.visibleProjectile(projectile));
     }
 
     getRanking(players) {
-        return players.map((player, index) => ({
-            id: player.id,
-            name: player.name,
-            alive: player.alive,
-            placement: player.placement > 0 ? player.placement : (player.alive ? 1 : index + 1),
-            kills: player.kills,
-            score: player.score
-        }));
+        return players.map((player, index) => StateSerializer.rankingEntry(player, index));
     }
 
     startWaitingRoom() {
@@ -745,6 +697,10 @@ class GameLogic {
         for (let i = 0; i < this.zoneRuntimeStates.length; i++) {
             this.zonePreviousRuntimeStates[i].x = this.zoneRuntimeStates[i].x;
             this.zonePreviousRuntimeStates[i].y = this.zoneRuntimeStates[i].y;
+        }
+
+        if (DISABLE_ENVIRONMENT_MOTION) {
+            return;
         }
 
         this.pathMotionTimeSeconds += dtSeconds;
@@ -1220,8 +1176,7 @@ class GameLogic {
     }
 
     playerHitBoxRectsAt(player, x, y) {
-        const clip = LEVEL.animationClips.get(player.animationId);
-        const hitBoxes = activeHitBoxesForClip(clip, player.frameIndex);
+        const hitBoxes = getCachedHitBoxes(player.animationId, player.frameIndex);
         if (!hitBoxes || hitBoxes.length <= 0) {
             return [rectAt(x, y, player.width, player.height)];
         }
@@ -1232,9 +1187,9 @@ class GameLogic {
 
     gemCollisionRect(gem) {
         const template = GEM_TEMPLATE_BY_TYPE.get(gem.type);
-        const clip = template ? LEVEL.animationClips.get(template.animationId) : null;
-        const frameIndex = resolveAnimationFrame(template ? template.animationId : '', this.tickCounter / TARGET_FPS_FALLBACK);
-        const hitBoxes = activeHitBoxesForClip(clip, frameIndex);
+        const animationId = template ? template.animationId : '';
+        const frameIndex = resolveAnimationFrame(animationId, this.tickCounter / TARGET_FPS_FALLBACK);
+        const hitBoxes = getCachedHitBoxes(animationId, frameIndex);
         if (!hitBoxes || hitBoxes.length <= 0) {
             return rectAt(gem.x, gem.y, gem.width, gem.height);
         }
@@ -1305,7 +1260,7 @@ class GameLogic {
             width: 16,
             height: 16,
             amount,
-            texturePath: kind === 'shield' ? 'media/gem.png' : 'media/DragonDeath.png',
+            texturePath: '',
             floatPhase: Math.random() * Math.PI * 2,
             visible: true
         };
@@ -1562,6 +1517,7 @@ class GameLogic {
             target.velocityY = 0;
             target.placement = Math.max(2, Array.from(this.players.values()).filter((player) => player.alive).length + 1);
             attacker.kills += 1;
+            attacker.totalKills += 1;
             attacker.score += 25;
             this.dropInventoryForPlayer(target);
         }
@@ -1767,10 +1723,9 @@ function buildGemTemplateMap(sprites) {
 
 function resolvePlayerAnimationId(facing, moving) {
     const animationName = resolvePlayerAnimationName(facing, moving);
-    for (const clip of LEVEL.animationClips.values()) {
-        if (normalize(clip.name) === normalize(animationName)) {
-            return clip.id;
-        }
+    const id = ANIMATION_ID_BY_NAME.get(normalize(animationName));
+    if (id !== undefined) {
+        return id;
     }
     return PLAYER_TEMPLATE ? PLAYER_TEMPLATE.animationId : '';
 }
@@ -1831,6 +1786,17 @@ function activeHitBoxesForClip(clip, frameIndex) {
         return clip.hitBoxes;
     }
     return null;
+}
+
+function getCachedHitBoxes(animationId, frameIndex) {
+    const key = `${animationId}:${frameIndex}`;
+    if (HITBOX_CACHE.has(key)) {
+        return HITBOX_CACHE.get(key);
+    }
+    const clip = LEVEL.animationClips.get(animationId);
+    const result = activeHitBoxesForClip(clip, frameIndex);
+    HITBOX_CACHE.set(key, result);
+    return result;
 }
 
 function hitBoxRectAt(x, y, width, height, hitBox, flipX, flipY) {
@@ -2029,5 +1995,121 @@ function randomInRange(min, max) {
 function pointInsideRect(x, y, rect) {
     return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
+
+// ---------------------------------------------------------------------------
+// StateSerializer — centralises all serialisation so each method has one place
+// to maintain the JSON contract.  The class methods delegate to these.
+// ---------------------------------------------------------------------------
+const StateSerializer = {
+    /** Snapshot entry for a single player (used by getSnapshotState). */
+    snapshotPlayer(player) {
+        return {
+            id: player.id,
+            name: player.name,
+            width: player.width,
+            height: player.height,
+            joinOrder: player.joinOrder,
+            kills: player.totalKills
+        };
+    },
+
+    /** Snapshot entry for a single gem (used by getSnapshotState). */
+    snapshotGem(gem) {
+        return {
+            id: gem.id,
+            type: gem.type,
+            x: round2(gem.x),
+            y: round2(gem.y),
+            width: gem.width,
+            height: gem.height,
+            value: gem.value
+        };
+    },
+
+    /**
+     * Full gameplay serialisation for a player.
+     * @param {object} player
+     * @param {number} tickCounter  – current game tick
+     * @param {object|null} equippedWeapon – result of getEquippedWeaponState(player)
+     */
+    gameplayPlayer(player, tickCounter, equippedWeapon) {
+        return {
+            id: player.id,
+            x: round2(player.x),
+            y: round2(player.y),
+            score: player.score,
+            gemsCollected: player.gemsCollected,
+            kills: player.totalKills,
+            deaths: player.deaths,
+            placement: player.placement,
+            alive: player.alive,
+            health: round2(player.health),
+            shield: round2(player.shield),
+            maxHealth: player.maxHealth,
+            maxShield: player.maxShield,
+            recentlyHit: tickCounter - player.recentHitAtTick <= 8,
+            aimX: round2(player.aimX),
+            aimY: round2(player.aimY),
+            equippedSlot: player.equippedSlot,
+            inventory: serializeInventory(player.inventory),
+            equippedWeapon,
+            direction: player.direction,
+            facing: player.facing,
+            moving: player.moving,
+        };
+    },
+
+    /** Visible gem entry (used by getVisibleGems). */
+    visibleGem(gem) {
+        return {
+            id: gem.id,
+            type: gem.type,
+            x: round2(gem.x),
+            y: round2(gem.y),
+            width: gem.width,
+            height: gem.height,
+            value: gem.value
+        };
+    },
+
+    /** Visible item entry (used by getVisibleItems). */
+    visibleItem(item) {
+        return {
+            id: item.id,
+            kind: item.kind,
+            weaponType: item.weaponType || '',
+            x: round2(item.x),
+            y: round2(item.y),
+            width: item.width,
+            height: item.height,
+            amount: item.amount || 0,
+            texturePath: item.texturePath || '',
+            floatPhase: round2(item.floatPhase || 0)
+        };
+    },
+
+    /** Visible projectile entry (used by getVisibleProjectiles). */
+    visibleProjectile(projectile) {
+        return {
+            id: projectile.id,
+            ownerId: projectile.ownerId,
+            x: round2(projectile.x),
+            y: round2(projectile.y),
+            radius: projectile.radius
+        };
+    },
+
+    /** Single ranking entry (used by getRanking). */
+    rankingEntry(player, index) {
+        return {
+            id: player.id,
+            name: player.name,
+            alive: player.alive,
+            placement: player.placement > 0 ? player.placement : (player.alive ? 1 : index + 1),
+            kills: player.kills,
+            score: player.score
+        };
+    }
+};
 
 module.exports = GameLogic;

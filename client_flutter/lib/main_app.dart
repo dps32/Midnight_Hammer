@@ -201,6 +201,7 @@ class _GameViewState extends State<_GameView>
   static const double _virtualHeight = 720;
 
   final FocusNode _focusNode = FocusNode();
+  final Set<PhysicalKeyboardKey> _pressedKeys = <PhysicalKeyboardKey>{};
   late final GameApp _game;
 
   Ticker? _ticker;
@@ -251,6 +252,7 @@ class _GameViewState extends State<_GameView>
   void dispose() {
     _ticker?.dispose();
     _focusNode.dispose();
+    _pressedKeys.clear();
     _game.dispose();
     super.dispose();
   }
@@ -262,8 +264,13 @@ class _GameViewState extends State<_GameView>
     }
 
     if (event is KeyDownEvent) {
+      if (_pressedKeys.contains(event.physicalKey)) {
+        return KeyEventResult.handled;
+      }
+      _pressedKeys.add(event.physicalKey);
       Gdx.input.onKeyDown(keycode);
     } else if (event is KeyUpEvent) {
+      _pressedKeys.remove(event.physicalKey);
       Gdx.input.onKeyUp(keycode);
     }
     return KeyEventResult.handled;
@@ -399,8 +406,8 @@ class _GameViewState extends State<_GameView>
             (overlayAreaWidth - restartButtonWidth) * 0.5,
           );
           final double restartButtonTop = math.min(
-            constraints.maxHeight - 84,
-            constraints.maxHeight * 0.64,
+            constraints.maxHeight - 64,
+            constraints.maxHeight * 0.61 + 8 * 22.0 + 28,
           );
           return Listener(
             child: Stack(

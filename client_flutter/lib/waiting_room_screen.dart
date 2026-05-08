@@ -1,14 +1,10 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'app_data.dart';
 import 'game_app.dart';
-import 'libgdx_compat/asset_manager.dart';
 import 'libgdx_compat/game_framework.dart';
 import 'libgdx_compat/math_types.dart';
 import 'libgdx_compat/viewport.dart';
-import 'level_data.dart';
-import 'level_loader.dart';
 import 'play_screen.dart';
 import 'player_list_renderer.dart';
 
@@ -41,8 +37,7 @@ class WaitingRoomScreen extends ScreenAdapter {
     @override
     void render(double delta) {
       final AppData appData = game.getAppData();
-      if (appData.phase == MatchPhase.playing ||
-          appData.phase == MatchPhase.finished) {
+      if (appData.phase == MatchPhase.playing) {
         game.setScreen(PlayScreen(game, levelIndex));
         return;
       }
@@ -65,7 +60,6 @@ class WaitingRoomScreen extends ScreenAdapter {
       final BitmapFont font = game.getFont();
       batch.begin();
 
-      // Draw title
       _drawCenteredText(
         batch,
         font,
@@ -88,7 +82,7 @@ class WaitingRoomScreen extends ScreenAdapter {
         );
       }
 
-      // Draw players list header
+      // Panel derecho: lista de jugadores conectados
       _drawLeftAlignedText(
         batch,
         font,
@@ -125,6 +119,39 @@ class WaitingRoomScreen extends ScreenAdapter {
           1.0,
           dimTextColor,
         );
+      }
+
+      // Ranking de la partida anterior centrado en la pantalla
+      final List<RankingEntry> prev = appData.previousRanking;
+      if (prev.isNotEmpty) {
+        final String winnerName = appData.sortedPlayers
+                .where((p) => p.id == appData.previousWinnerId)
+                .firstOrNull
+                ?.name ??
+            prev.first.name;
+        _drawCenteredText(
+          batch,
+          font,
+          'Last match — Winner: $winnerName',
+          worldHeight * 0.42,
+          1.3,
+          localPlayerColor,
+        );
+        double rowY = worldHeight * 0.5;
+        const double rowH = 26;
+        final int maxRows = prev.length > 8 ? 8 : prev.length;
+        for (int i = 0; i < maxRows; i++) {
+          final RankingEntry e = prev[i];
+          _drawCenteredText(
+            batch,
+            font,
+            '${e.placement}. ${e.name}   K:${e.kills}  Pts:${e.score}',
+            rowY,
+            0.95,
+            i == 0 ? localPlayerColor : textColor,
+          );
+          rowY += rowH;
+        }
       }
 
       batch.end();

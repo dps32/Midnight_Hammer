@@ -18,6 +18,8 @@ import 'runtime_transform.dart';
 import 'waiting_room_screen.dart';
 
 class PlayScreen extends ScreenAdapter {
+  static const String _assetPrefix = 'levels/';
+
   static const double leaderboardWidth = 320;
   static const double leaderboardPadding = 14;
   static const double leaderboardRowHeight = 24;
@@ -38,7 +40,6 @@ class PlayScreen extends ScreenAdapter {
   static final ui.Color winnerOverlayColor = colorValueOf('000000B8');
   static final ui.Color hudBarBackground = colorValueOf('101A1488');
   static final ui.Color hpColor = colorValueOf('53E46E');
-  static final ui.Color shieldColor = colorValueOf('47A9FF');
   static final ui.Color dangerColor = colorValueOf('FF4F4F');
   static final ui.Color hotbarFill = colorValueOf('0F1A12CC');
   static final ui.Color hotbarBorder = colorValueOf('2D5C43');
@@ -59,6 +60,9 @@ class PlayScreen extends ScreenAdapter {
   late final Array<RuntimeTransform> zoneRuntimeStates;
   late final LevelSprite playerTemplate;
   late final Map<String, LevelSprite> gemTemplateByType;
+  late final Map<String, String> _animationIdByName;
+  late final List<TrainingSlowZone> _cachedWaterTileSlowZones;
+  late final _HudRenderer _hudRenderer;
 
   double elapsedSeconds = 0;
   String _lastSubmittedDirection = 'none';
@@ -81,6 +85,9 @@ class PlayScreen extends ScreenAdapter {
     zoneRuntimeStates = _createZoneRuntimeStates(levelData);
     playerTemplate = _findPlayerTemplate(levelData);
     gemTemplateByType = _buildGemTemplates(levelData);
+    _animationIdByName = _buildAnimationIdByNameCache(levelData);
+    _cachedWaterTileSlowZones = _computeWaterTileSlowZones();
+    _hudRenderer = _HudRenderer(game);
     _applyInitialCameraFromLevel();
     viewport.update(
       Gdx.graphics.getWidth().toDouble(),
@@ -156,11 +163,9 @@ class PlayScreen extends ScreenAdapter {
     }
     _renderCrosshair();
 
-    _renderHud(appData);
-    if (!_isTrainingMode()) {
+    _hudRenderer.render(appData);
+    if (!_isTrainingMode() && appData.phase == MatchPhase.finished) {
       _renderLeaderboard(appData);
-    }
-    if (appData.phase == MatchPhase.finished) {
       _renderWinnerOverlay(appData);
     }
   }
@@ -282,7 +287,7 @@ class PlayScreen extends ScreenAdapter {
     if (weapon == null || weapon.texturePath.isEmpty) {
       return;
     }
-    final String texturePath = 'levels/${weapon.texturePath}';
+    final String texturePath = '$_assetPrefix${weapon.texturePath}';
     final AssetManager assets = game.getAssetManager();
     if (!assets.isLoaded(texturePath, Texture)) {
       return;
@@ -332,7 +337,10 @@ class PlayScreen extends ScreenAdapter {
       weaponWidth,
       weaponHeight,
     );
-    batch.drawRegion(texture, src, dst, flipX: aimDx < 0);
+    // Angle from right (aimDx,aimDy) converted to screen radians.
+    // Screen Y is flipped vs world Y, so negate aimDy.
+    final double angle = math.atan2(-aimDy, aimDx);
+    batch.drawRegion(texture, src, dst, rotation: -angle, flipY: aimDy > 0);
   }
 
   void _drawAnimatedSprite(
@@ -443,178 +451,6 @@ class PlayScreen extends ScreenAdapter {
     batch.end();
   }
 
-  void _renderHud(AppData appData) {
-    final MultiplayerPlayer? local = appData.localPlayer;
-    if (local == null) {
-      return;
-    }
-
-    final double screenWidth = Gdx.graphics.getWidth().toDouble();
-    final double reservedRight = _isTrainingMode() ? 0 : leaderboardWidth;
-    final double screenHeight = Gdx.graphics.getHeight().toDouble();
-    final double usableWidth = math.max(300, screenWidth - reservedRight - hudPadding * 2);
-    final double hpPercent = local.maxHealth <= 0
-        ? 0
-        : local.health / local.maxHealth;
-    final double shieldPercent = local.maxShield <= 0
-        ? 0
-        : local.shield / local.maxShield;
-    const double barHeight = 14;
-    const double hotbarGap = 10;
-    final double hotbarWidth = hotbarSlotSize * 5 + 8 * 4;
-    final double desiredLeftPanel = 198;
-    final double totalClusterWidth = desiredLeftPanel + hotbarGap + hotbarWidth;
-    final double shrink = math.max(0, totalClusterWidth - usableWidth);
-    final double leftPanelWidth = math.max(130, desiredLeftPanel - shrink);
-    final double hotbarLeft = hudPadding + leftPanelWidth + hotbarGap;
-    final double leftPanelInner = math.max(100, leftPanelWidth - 12);
-    final double hotbarTop = screenHeight - hotbarHeight;
-    final double healthBarTop = hotbarTop - 56;
-    final double shieldBarTop = hotbarTop - 34;
-    final double leftPanelX = hudPadding;
-    final double aliveY = hotbarTop - 13;
-    final double killsY = hotbarTop + 7;
-
-    final ShapeRenderer shapes = game.getShapeRenderer();
-    shapes.begin(ShapeType.filled);
-    shapes.setColor(hudBarBackground);
-    shapes.rect(leftPanelX, healthBarTop, leftPanelInner, barHeight);
-    shapes.rect(leftPanelX, shieldBarTop, leftPanelInner, barHeight);
-    shapes.setColor(hpColor);
-    shapes.rect(
-      leftPanelX,
-      healthBarTop,
-      leftPanelInner * clampDouble(hpPercent, 0, 1),
-      barHeight,
-    );
-    shapes.setColor(shieldColor);
-    shapes.rect(
-      leftPanelX,
-      shieldBarTop,
-      leftPanelInner * clampDouble(shieldPercent, 0, 1),
-      barHeight,
-    );
-    shapes.end();
-
-    final SpriteBatch batch = game.getBatch();
-    final BitmapFont font = game.getFont();
-    batch.begin();
-    // Use white fonts and align vertically with bars
-    final ui.Color fontColor = titleColor;
-    _drawLeftAlignedText(
-      batch,
-      font,
-      'HP ${local.health.round()} / ${local.maxHealth.round()}',
-      leftPanelX,
-      healthBarTop + barHeight - 2,
-      0.9,
-      local.health <= 25 ? dangerColor : fontColor,
-    );
-    _drawLeftAlignedText(
-      batch,
-      font,
-      'Shield ${local.shield.round()} / ${local.maxShield.round()}',
-      leftPanelX,
-      shieldBarTop + barHeight - 2,
-      0.9,
-      fontColor,
-    );
-    _drawLeftAlignedText(
-      batch,
-      font,
-      'Alive: ${appData.alivePlayers}',
-      leftPanelX,
-      aliveY,
-      0.92,
-      fontColor,
-    );
-    _drawLeftAlignedText(
-      batch,
-      font,
-      'Kills: ${local.kills}',
-      leftPanelX,
-      killsY,
-      0.92,
-      fontColor,
-    );
-
-    batch.end();
-
-    shapes.begin(ShapeType.filled);
-    for (int i = 0; i < 5; i++) {
-      final double x = hotbarLeft + i * (hotbarSlotSize + 8);
-      final ui.Color border = i == local.equippedSlot
-          ? hotbarSelected
-          : hotbarBorder;
-      shapes.setColor(hotbarFill);
-      shapes.rect(x, hotbarTop, hotbarSlotSize, hotbarSlotSize);
-      shapes.setColor(border);
-      shapes.rect(x, hotbarTop, hotbarSlotSize, 2);
-      shapes.rect(x, hotbarTop + hotbarSlotSize - 2, hotbarSlotSize, 2);
-      shapes.rect(x, hotbarTop, 2, hotbarSlotSize);
-      shapes.rect(x + hotbarSlotSize - 2, hotbarTop, 2, hotbarSlotSize);
-    }
-    shapes.end();
-
-    batch.begin();
-    for (int i = 0; i < 5; i++) {
-      final InventoryWeaponSlot? slot = i < local.inventory.length
-          ? local.inventory[i]
-          : null;
-      if (slot == null || slot.texturePath.isEmpty) {
-        continue;
-      }
-      final String texturePath = 'levels/${slot.texturePath}';
-      if (!game.getAssetManager().isLoaded(texturePath, Texture)) {
-        continue;
-      }
-      final Texture texture = game.getAssetManager().get(texturePath, Texture);
-      final double x = hotbarLeft + i * (hotbarSlotSize + 8);
-      final ui.Rect src = ui.Rect.fromLTWH(
-        0,
-        0,
-        texture.width.toDouble(),
-        texture.height.toDouble(),
-      );
-      final ui.Rect dst = ui.Rect.fromLTWH(
-        x + 4,
-        hotbarTop + 6,
-        hotbarSlotSize - 8,
-        hotbarSlotSize - 24,
-      );
-      batch.drawRegion(texture, src, dst);
-      _drawLeftAlignedText(
-        batch,
-        font,
-        '${slot.clipAmmo}/${slot.reserveAmmo}',
-        x + 4,
-        hotbarTop + hotbarSlotSize - 4,
-        0.82,
-        textColor,
-      );
-    }
-
-    final EquippedWeapon? equipped = local.equippedWeapon;
-    if (equipped != null &&
-        local.equippedSlot >= 0 &&
-        local.equippedSlot < 5) {
-      final double selectedX =
-          hotbarLeft + local.equippedSlot * (hotbarSlotSize + 8);
-      final InventoryWeaponSlot? selectedSlot = local.equippedSlot < local.inventory.length ? local.inventory[local.equippedSlot] : null;
-      final String labelToShow = equipped.label.isNotEmpty ? equipped.label : (selectedSlot == null ? 'vacio2' : '');
-      _drawLeftAlignedText(
-        batch,
-        font,
-        labelToShow,
-        selectedX + 4,
-        hotbarTop - 8,
-        0.95,
-        localPlayerColor,
-      );
-    }
-    batch.end();
-  }
-
   void _renderWinnerOverlay(AppData appData) {
     final ShapeRenderer shapes = game.getShapeRenderer();
     final double screenWidth = Gdx.graphics.getWidth().toDouble();
@@ -655,22 +491,23 @@ class PlayScreen extends ScreenAdapter {
 
     final List<RankingEntry> ranking = appData.ranking;
     double rowY = screenHeight * 0.61;
-    final double textLeft = 48;
+    const double rowHeight = 22;
+    final double overlayWidth = screenWidth - (_isTrainingMode() ? 0 : leaderboardWidth);
     final int maxRows = math.min(8, ranking.length);
     for (int i = 0; i < maxRows; i++) {
       final RankingEntry entry = ranking[i];
       final String row =
           '${entry.placement}. ${entry.name}   K:${entry.kills}  Pts:${entry.score}';
-      _drawLeftAlignedText(
+      _drawCenteredText(
         batch,
         font,
         row,
-        textLeft,
         rowY,
         1.0,
         entry.id == appData.playerId ? localPlayerColor : textColor,
+        maxWidth: overlayWidth,
       );
-      rowY += 22;
+      rowY += rowHeight;
     }
     batch.end();
   }
@@ -799,17 +636,16 @@ class PlayScreen extends ScreenAdapter {
   void _renderGroundItems(SpriteBatch batch, List<GroundItem> items) {
     final AssetManager assets = game.getAssetManager();
     for (final GroundItem item in items) {
-      final String texturePath = item.texturePath.isNotEmpty
-          ? 'levels/${item.texturePath}'
-          : 'levels/media/gem.png';
+      if (item.texturePath.isEmpty) {
+        continue;
+      }
+      final String texturePath = '$_assetPrefix${item.texturePath}';
       if (!assets.isLoaded(texturePath, Texture)) {
         continue;
       }
-      final double floatOffset =
-          math.sin(elapsedSeconds * 2.4 + item.floatPhase) * 3;
       final ui.Rect dst = viewport.worldToScreenRect(
         item.x,
-        item.y + floatOffset,
+        item.y,
         item.width,
         item.height,
       );
@@ -1053,7 +889,40 @@ class PlayScreen extends ScreenAdapter {
       );
     }
 
+    slow.addAll(_cachedWaterTileSlowZones);
+
     return _TrainingWorldRules(blocking, slow);
+  }
+
+  static const Set<int> _waterTileIds = <int>{
+    87, 89, 90, 113, 114, 115, 116, 117, 141,
+  };
+  static const double _waterSpeedMultiplier = 0.45;
+
+  List<TrainingSlowZone> _computeWaterTileSlowZones() {
+    final List<TrainingSlowZone> slow = <TrainingSlowZone>[];
+    for (int li = 0; li < levelData.layers.size; li++) {
+      final LevelLayer layer = levelData.layers.get(li);
+      if (layer.tileMap.isEmpty || layer.tileWidth <= 0 || layer.tileHeight <= 0) {
+        continue;
+      }
+      for (int row = 0; row < layer.tileMap.length; row++) {
+        final List<int> rowData = layer.tileMap[row];
+        for (int col = 0; col < rowData.length; col++) {
+          if (!_waterTileIds.contains(rowData[col])) {
+            continue;
+          }
+          slow.add(TrainingSlowZone(
+            x: layer.x + col * layer.tileWidth,
+            y: layer.y + row * layer.tileHeight,
+            width: layer.tileWidth.toDouble(),
+            height: layer.tileHeight.toDouble(),
+            speedMultiplier: _waterSpeedMultiplier,
+          ));
+        }
+      }
+    }
+    return slow;
   }
 
   bool _isWallZone(String type) {
@@ -1162,6 +1031,16 @@ class PlayScreen extends ScreenAdapter {
       }
     }
     return templates;
+  }
+
+  Map<String, String> _buildAnimationIdByNameCache(LevelData data) {
+    final Map<String, String> cache = <String, String>{};
+    for (final MapEntry<String, AnimationClip> entry
+        in data.animationClips.entries()) {
+      final String normalizedName = normalize(entry.value.name);
+      cache.putIfAbsent(normalizedName, () => entry.key);
+    }
+    return cache;
   }
 
   _AnimatedSpriteFrame _playerFrameFor(MultiplayerPlayer player) {
@@ -1275,14 +1154,7 @@ class PlayScreen extends ScreenAdapter {
   }
 
   String? _findAnimationIdByName(String animationName) {
-    final String normalized = normalize(animationName);
-    for (final MapEntry<String, AnimationClip> entry
-        in levelData.animationClips.entries()) {
-      if (normalize(entry.value.name) == normalized) {
-        return entry.key;
-      }
-    }
-    return null;
+    return _animationIdByName[normalize(animationName)];
   }
 
   String? _findAnimationIdByNames(List<String> animationNames) {
@@ -1317,6 +1189,18 @@ class PlayScreen extends ScreenAdapter {
     );
   }
 
+  void _withTextStyle(
+    BitmapFont font,
+    double scale,
+    ui.Color color,
+    void Function() draw,
+  ) {
+    font.getData().setScale(scale);
+    font.setColor(color);
+    draw();
+    font.getData().setScale(1);
+  }
+
   void _drawCenteredText(
     SpriteBatch batch,
     BitmapFont font,
@@ -1326,13 +1210,229 @@ class PlayScreen extends ScreenAdapter {
     ui.Color color, {
     double? maxWidth,
   }) {
+    _withTextStyle(font, scale, color, () {
+      layout.setText(font, text);
+      final double width =
+          maxWidth ?? Gdx.graphics.getWidth().toDouble() - leaderboardWidth;
+      final double x = (width - layout.width) * 0.5;
+      font.draw(batch, layout, x, y);
+    });
+  }
+
+  void _drawLeftAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double x,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    _withTextStyle(font, scale, color, () {
+      font.drawText(text, x, y);
+    });
+  }
+
+  void _drawRightAlignedText(
+    SpriteBatch batch,
+    BitmapFont font,
+    String text,
+    double right,
+    double y,
+    double scale,
+    ui.Color color,
+  ) {
+    _withTextStyle(font, scale, color, () {
+      layout.setText(font, text);
+      font.draw(batch, layout, right - layout.width, y);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HUD renderer — isolated from PlayScreen to satisfy SRP.
+// ---------------------------------------------------------------------------
+
+class _HudRenderer {
+  static const double _hotbarHeight = PlayScreen.hotbarHeight;
+  static const double _hotbarSlotSize = PlayScreen.hotbarSlotSize;
+  static const double _hudPadding = PlayScreen.hudPadding;
+
+  static final ui.Color _hudBarBackground = PlayScreen.hudBarBackground;
+  static final ui.Color _hpColor = PlayScreen.hpColor;
+  static final ui.Color _dangerColor = PlayScreen.dangerColor;
+  static final ui.Color _hotbarFill = PlayScreen.hotbarFill;
+  static final ui.Color _hotbarBorder = PlayScreen.hotbarBorder;
+  static final ui.Color _hotbarSelected = PlayScreen.hotbarSelected;
+
+  final GameApp _game;
+
+  _HudRenderer(this._game);
+
+  void render(AppData appData) {
+    final MultiplayerPlayer? local = appData.localPlayer;
+    if (local == null) {
+      return;
+    }
+
+    final bool isTrainingMode = _game.networkConfig.trainingMode;
+    final double screenWidth = Gdx.graphics.getWidth().toDouble();
+    final double reservedRight = isTrainingMode ? 0 : PlayScreen.leaderboardWidth;
+    final double screenHeight = Gdx.graphics.getHeight().toDouble();
+    final double usableWidth = math.max(300, screenWidth - reservedRight - _hudPadding * 2);
+    final double hpPercent = local.maxHealth <= 0
+        ? 0
+        : local.health / local.maxHealth;
+    const double barHeight = 14;
+    const double hotbarGap = 10;
+    final double hotbarWidth = _hotbarSlotSize * 5 + 8 * 4;
+    final double desiredLeftPanel = 198;
+    final double totalClusterWidth = desiredLeftPanel + hotbarGap + hotbarWidth;
+    final double shrink = math.max(0, totalClusterWidth - usableWidth);
+    final double leftPanelWidth = math.max(130, desiredLeftPanel - shrink);
+    final double hotbarLeft = _hudPadding + leftPanelWidth + hotbarGap;
+    final double leftPanelInner = math.max(100, leftPanelWidth - 12);
+    final double hotbarTop = screenHeight - _hotbarHeight;
+    final double healthBarTop = hotbarTop - 22;
+    final double leftPanelX = _hudPadding;
+    final double killsY = healthBarTop - 18;
+    final double aliveY = killsY - 18;
+
+    final ShapeRenderer shapes = _game.getShapeRenderer();
+    shapes.begin(ShapeType.filled);
+    shapes.setColor(_hudBarBackground);
+    shapes.rect(leftPanelX, healthBarTop, leftPanelInner, barHeight);
+    shapes.setColor(_hpColor);
+    shapes.rect(
+      leftPanelX,
+      healthBarTop,
+      leftPanelInner * clampDouble(hpPercent, 0, 1),
+      barHeight,
+    );
+    shapes.end();
+
+    final SpriteBatch batch = _game.getBatch();
+    final BitmapFont font = _game.getFont();
+    batch.begin();
+    final ui.Color fontColor = PlayScreen.titleColor;
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'HP ${local.health.round()} / ${local.maxHealth.round()}',
+      leftPanelX,
+      healthBarTop + barHeight - 2,
+      0.9,
+      local.health <= 25 ? _dangerColor : fontColor,
+    );
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'Alive: ${appData.alivePlayers}',
+      leftPanelX,
+      aliveY,
+      0.92,
+      fontColor,
+    );
+    _drawLeftAlignedText(
+      batch,
+      font,
+      'K ${local.kills}',
+      leftPanelX,
+      killsY,
+      0.92,
+      fontColor,
+    );
+
+    batch.end();
+
+    shapes.begin(ShapeType.filled);
+    for (int i = 0; i < 5; i++) {
+      final double x = hotbarLeft + i * (_hotbarSlotSize + 8);
+      final ui.Color border = i == local.equippedSlot
+          ? _hotbarSelected
+          : _hotbarBorder;
+      shapes.setColor(_hotbarFill);
+      shapes.rect(x, hotbarTop, _hotbarSlotSize, _hotbarSlotSize);
+      shapes.setColor(border);
+      shapes.rect(x, hotbarTop, _hotbarSlotSize, 2);
+      shapes.rect(x, hotbarTop + _hotbarSlotSize - 2, _hotbarSlotSize, 2);
+      shapes.rect(x, hotbarTop, 2, _hotbarSlotSize);
+      shapes.rect(x + _hotbarSlotSize - 2, hotbarTop, 2, _hotbarSlotSize);
+    }
+    shapes.end();
+
+    batch.begin();
+    for (int i = 0; i < 5; i++) {
+      final InventoryWeaponSlot? slot = i < local.inventory.length
+          ? local.inventory[i]
+          : null;
+      if (slot == null || slot.texturePath.isEmpty) {
+        continue;
+      }
+      final String texturePath = '${PlayScreen._assetPrefix}${slot.texturePath}';
+      if (!_game.getAssetManager().isLoaded(texturePath, Texture)) {
+        continue;
+      }
+      final Texture texture = _game.getAssetManager().get(texturePath, Texture);
+      final double x = hotbarLeft + i * (_hotbarSlotSize + 8);
+      final ui.Rect src = ui.Rect.fromLTWH(
+        0,
+        0,
+        texture.width.toDouble(),
+        texture.height.toDouble(),
+      );
+      final ui.Rect dst = ui.Rect.fromLTWH(
+        x + 4,
+        hotbarTop + 6,
+        _hotbarSlotSize - 8,
+        _hotbarSlotSize - 24,
+      );
+      batch.drawRegion(texture, src, dst);
+      _drawLeftAlignedText(
+        batch,
+        font,
+        '${slot.clipAmmo}/${slot.reserveAmmo}',
+        x + 4,
+        hotbarTop + _hotbarSlotSize - 4,
+        0.82,
+        PlayScreen.textColor,
+      );
+    }
+
+    final EquippedWeapon? equipped = local.equippedWeapon;
+    if (equipped != null &&
+        local.equippedSlot >= 0 &&
+        local.equippedSlot < 5) {
+      final double selectedX =
+          hotbarLeft + local.equippedSlot * (_hotbarSlotSize + 8);
+      final InventoryWeaponSlot? selectedSlot = local.equippedSlot < local.inventory.length
+          ? local.inventory[local.equippedSlot]
+          : null;
+      final String labelToShow = equipped.label.isNotEmpty
+          ? equipped.label
+          : (selectedSlot == null ? 'vacio2' : '');
+      _drawLeftAlignedText(
+        batch,
+        font,
+        labelToShow,
+        selectedX + 4,
+        hotbarTop - 8,
+        0.95,
+        PlayScreen.localPlayerColor,
+      );
+    }
+    batch.end();
+  }
+
+  void _withTextStyle(
+    BitmapFont font,
+    double scale,
+    ui.Color color,
+    void Function() draw,
+  ) {
     font.getData().setScale(scale);
     font.setColor(color);
-    layout.setText(font, text);
-    final double width =
-        maxWidth ?? Gdx.graphics.getWidth().toDouble() - leaderboardWidth;
-    final double x = (width - layout.width) * 0.5;
-    font.draw(batch, layout, x, y);
+    draw();
     font.getData().setScale(1);
   }
 
@@ -1345,26 +1445,9 @@ class PlayScreen extends ScreenAdapter {
     double scale,
     ui.Color color,
   ) {
-    font.getData().setScale(scale);
-    font.setColor(color);
-    font.drawText(text, x, y);
-    font.getData().setScale(1);
-  }
-
-  void _drawRightAlignedText(
-    SpriteBatch batch,
-    BitmapFont font,
-    String text,
-    double right,
-    double y,
-    double scale,
-    ui.Color color,
-  ) {
-    font.getData().setScale(scale);
-    font.setColor(color);
-    layout.setText(font, text);
-    font.draw(batch, layout, right - layout.width, y);
-    font.getData().setScale(1);
+    _withTextStyle(font, scale, color, () {
+      font.drawText(text, x, y);
+    });
   }
 }
 
