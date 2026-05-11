@@ -1972,6 +1972,13 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
+function randomInRange(min, max) {
+    if (max <= min) {
+        return min;
+    }
+    return min + Math.random() * (max - min);
+}
+
 function lerp(from, to, alpha) {
     return from + (to - from) * alpha;
 }

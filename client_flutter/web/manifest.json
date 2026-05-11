@@ -1,6 +1,6 @@
 {
-    "name": "client_flutter",
-    "short_name": "client_flutter",
+    "name": "Midnight Hammer",
+    "short_name": "Midnight Hammer",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

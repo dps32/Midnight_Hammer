@@ -17,7 +17,7 @@ class MainApp {
 
   static Future<void> main() async {
     WidgetsFlutterBinding.ensureInitialized();
-    await configureGameWindow('Game Example - Flutter');
+    await configureGameWindow('Midnight Hammer');
     runApp(const _GameRoot());
   }
 }
@@ -41,7 +41,7 @@ class _GameRootState extends State<_GameRoot> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Game Example - Flutter',
+      title: 'Midnight Hammer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

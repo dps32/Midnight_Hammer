@@ -8230,7 +8230,7 @@ var $async$a0T=A.P(function(a,b){if(a===1)return A.L(b,r)
 for(;;)switch(s){case 0:if($.W==null)A.asq()
 $.W.toString
 s=2
-return A.S(A.anH("Game Example - Flutter"),$async$a0T)
+return A.S(A.anH("Midnight Hammer"),$async$a0T)
 case 2:if($.W==null)A.asq()
 q=$.W
 q.toString
@@ -40950,7 +40950,7 @@ ao(){return new A.B2()}}
 A.B2.prototype={
 a5G(a){this.au(new A.aef(this,a))},
 S(a){var s=null,r=A.rD(s,A.apc(B.a0,s,s,B.HP),!0),q=this.d
-return new A.x1(new A.yq(A.aCB(q==null?new A.Au(this.ga5F(),s):new A.B3(q,s),!0),s),"Game Example - Flutter",r,!1,s)}}
+return new A.x1(new A.yq(A.aCB(q==null?new A.Au(this.ga5F(),s):new A.B3(q,s),!0),s),"Midnight Hammer",r,!1,s)}}
 A.aef.prototype={
 $0(){this.a.d=this.b},
 $S:0}
