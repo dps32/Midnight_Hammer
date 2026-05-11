@@ -12,6 +12,8 @@ const PLAYER_START_X = 32;
 const PLAYER_START_Y = 32;
 const PLAYER_START_STEP_X = 32;
 const PLAYER_START_STEP_Y = 32;
+const SPAWN_MIN_DISTANCE = 64;
+const SPAWN_ATTEMPTS = 40;
 const GEM_WIDTH = 15;
 const GEM_HEIGHT = 15;
 const MAX_INVENTORY_SLOTS = 5;
@@ -250,7 +252,11 @@ class GameLogic {
         if (this.players.size >= PLAYER_MAX_COUNT) {
             return null;
         }
-        const spawn = this.getSpawnPosition(this.players.size);
+        const existingPositions = Array.from(this.players.values()).map((player) => ({
+            x: player.x,
+            y: player.y
+        }));
+        const spawn = this.getSpawnPosition(existingPositions, this.players.size);
         const player = {
             id,
             name: `Player ${this.players.size + 1}`,
@@ -294,7 +300,13 @@ class GameLogic {
         if (this.players.size === 1) {
             this.startWaitingRoom();
         } else if (this.phase === 'playing') {
-            this.resetPlayerForMatch(player, this.players.size - 1);
+            const playingPositions = Array.from(this.players.values()).map((entry) => ({
+                x: entry.x,
+                y: entry.y
+            }));
+            const fallbackIndex = Math.max(0, this.players.size - 1);
+            const spawnPosition = this.getSpawnPosition(playingPositions, fallbackIndex);
+            this.resetPlayerForMatch(player, spawnPosition, fallbackIndex);
         }
 
         return player;
@@ -771,13 +783,14 @@ class GameLogic {
 
     positionPlayersForStart() {
         const players = Array.from(this.players.values()).sort((a, b) => a.joinOrder - b.joinOrder);
+        const spawnPositions = this.generateSpawnPositions(players.length);
         players.forEach((player, index) => {
-            this.resetPlayerForMatch(player, index);
+            this.resetPlayerForMatch(player, spawnPositions[index], index);
         });
     }
 
-    resetPlayerForMatch(player, index) {
-        const spawn = this.getSpawnPosition(index);
+    resetPlayerForMatch(player, spawnPosition, fallbackIndex = 0) {
+        const spawn = spawnPosition || this.getSpawnPosition([], fallbackIndex);
         player.x = spawn.x;
         player.y = spawn.y;
         player.direction = 'none';
@@ -808,7 +821,72 @@ class GameLogic {
         this.resolveWallPenetration(player);
     }
 
-    getSpawnPosition(index) {
+    generateSpawnPositions(count) {
+        const positions = [];
+        for (let i = 0; i < count; i++) {
+            const spawn = this.getSpawnPosition(positions, i);
+            positions.push(spawn);
+        }
+        return positions;
+    }
+
+    getSpawnPosition(existingPositions, fallbackIndex) {
+        const randomSpawn = this.getRandomSpawnPosition(existingPositions);
+        if (randomSpawn) {
+            return randomSpawn;
+        }
+        return this.getGridSpawnPosition(fallbackIndex);
+    }
+
+    getRandomSpawnPosition(existingPositions) {
+        const minX = 0;
+        const minY = 0;
+        const maxX = Math.max(0, LEVEL.worldWidth - PLAYER_WIDTH);
+        const maxY = Math.max(0, LEVEL.worldHeight - PLAYER_HEIGHT);
+        const minDistanceSq = SPAWN_MIN_DISTANCE * SPAWN_MIN_DISTANCE;
+
+        for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
+            const candidate = {
+                x: randomInRange(minX, maxX),
+                y: randomInRange(minY, maxY)
+            };
+
+            if (!this.isSpawnPositionValid(candidate, existingPositions, minDistanceSq)) {
+                continue;
+            }
+            return candidate;
+        }
+
+        return null;
+    }
+
+    isSpawnPositionValid(candidate, existingPositions, minDistanceSq) {
+        const tempPlayer = {
+            x: candidate.x,
+            y: candidate.y,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT
+        };
+        if (this.wouldCollideBlocked(tempPlayer, candidate.x, candidate.y)) {
+            return false;
+        }
+
+        const centerX = candidate.x + PLAYER_WIDTH * 0.5;
+        const centerY = candidate.y + PLAYER_HEIGHT * 0.5;
+        for (const existing of existingPositions) {
+            const existingCenterX = existing.x + PLAYER_WIDTH * 0.5;
+            const existingCenterY = existing.y + PLAYER_HEIGHT * 0.5;
+            const dx = centerX - existingCenterX;
+            const dy = centerY - existingCenterY;
+            if (dx * dx + dy * dy < minDistanceSq) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    getGridSpawnPosition(index) {
         const maxRows = Math.max(
             1,
             Math.floor((LEVEL.worldHeight - PLAYER_START_Y - PLAYER_HEIGHT) / PLAYER_START_STEP_Y) + 1
