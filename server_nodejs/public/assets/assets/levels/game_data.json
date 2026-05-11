@@ -1,5 +1,5 @@
 {
-  "name": "Multiplayer game",
+  "name": "MidnightHammer",
   "description": "Tileset: https://merchant-shade.itch.io/16x16-puny-world\nCharacter: https://erisesra.itch.io/character-templates-pack\nLevel 1: https://ansimuz.itch.io/sunny-land-pixel-game-art",
   "levels": [
     {
@@ -108,66 +108,6 @@
           "flipY": false,
           "depth": 0.0,
           "groupId": "__main__"
-        },
-        {
-          "name": "Gem Purple",
-          "gameplayData": "",
-          "type": "Gem Purple",
-          "animationId": "anim_1772440074459800",
-          "x": 50,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Yellow",
-          "gameplayData": "",
-          "type": "Gem Yellow",
-          "animationId": "anim_2",
-          "x": 75,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Green",
-          "gameplayData": "",
-          "type": "Gem Green",
-          "animationId": "anim_1",
-          "x": 100,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
-        },
-        {
-          "name": "Gem Blue",
-          "gameplayData": "",
-          "type": "Gem Blue",
-          "animationId": "anim_3",
-          "x": 125,
-          "y": 475,
-          "width": 15,
-          "height": 15,
-          "imageFile": "media/gem.png",
-          "flipX": false,
-          "flipY": false,
-          "depth": 0.0,
-          "groupId": "__main__"
         }
       ],
       "spriteGroups": [
@@ -227,20 +167,83 @@
       "groupId": "__main__"
     },
     {
-      "name": "Smoke",
-      "fileName": "media/DragonDeath.png",
-      "mediaType": "spritesheet",
-      "tileWidth": 28,
-      "tileHeight": 26,
+      "name": "ak47_2",
+      "fileName": "media/ak47_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     },
     {
-      "name": "Gem",
-      "fileName": "media/gem.png",
+      "name": "awp_2",
+      "fileName": "media/awp_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "dron_2",
+      "fileName": "media/dron_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "escopeta_2",
+      "fileName": "media/escopeta_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "f15_2",
+      "fileName": "media/f15_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "glock_2",
+      "fileName": "media/glock_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "rifle_asalto_2",
+      "fileName": "media/rifle_asalto_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "smg_2",
+      "fileName": "media/smg_2.png",
+      "mediaType": "tileset",
+      "tileWidth": 100,
+      "tileHeight": 100,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "soldier_2",
+      "fileName": "media/soldier_2.png",
       "mediaType": "spritesheet",
-      "tileWidth": 15,
-      "tileHeight": 15,
+      "tileWidth": 333,
+      "tileHeight": 333,
       "selectionColorHex": "#FFCC00",
       "groupId": "__main__"
     }
