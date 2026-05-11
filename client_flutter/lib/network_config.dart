@@ -1,7 +1,7 @@
 enum ServerOption { local, remote }
 
 class NetworkConfig {
-  static const String remoteServer = 'apalaci8.ieti.site';
+  static const String remoteServer = 'vprietogallegos.ieti.site';
 
   final ServerOption serverOption;
   final String playerName;

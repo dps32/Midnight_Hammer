@@ -11,7 +11,9 @@ cleanup() {
 trap cleanup EXIT
 
 ORIGINAL_DIR=$(pwd)
-cd "$(dirname "$0")"  # Cambiar al directorio del script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$SCRIPT_DIR"  # Cambiar al directorio del script
 source ./config.env
 
 # Parámetros opcionales: usuario, ruta RSA, puerto SSH
@@ -43,10 +45,12 @@ fi
 # cd ..
 # ./getAssets.sh
 
-# Crear paquete ZIP
+# Crear paquete ZIP desde la raiz del proyecto (server_nodejs)
 echo "📦 Creando paquete para despliegue..."
 rm -f "$ZIP_NAME"
-zip -r "$ZIP_NAME" . -x "proxmox/*" "node_modules/*" "data" "data/*" ".gitignore" ".DS_Store"
+cd "$ROOT_DIR"
+zip -r "$SCRIPT_DIR/$ZIP_NAME" . -x "proxmox/*" "node_modules/*" "data" "data/*" ".gitignore" ".DS_Store"
+cd "$SCRIPT_DIR"
 
 # Transferir y desplegar
 echo "🚀 Iniciando despliegue al servidor..."

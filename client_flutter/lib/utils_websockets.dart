@@ -38,6 +38,9 @@ class WebSocketsHandler {
         host: host,
         port: serverPort,
       );
+      if (kDebugMode) {
+        print('WebSocket: connecting to $uri');
+      }
       final WebSocketChannel channel = WebSocketChannel.connect(uri);
       _socketClient = channel;
 
@@ -46,11 +49,17 @@ class WebSocketsHandler {
           return;
         }
         connectionStatus = ConnectionStatus.connected;
+        if (kDebugMode) {
+          print('WebSocket: connected to $uri');
+        }
       }).catchError((dynamic error) {
         if (!identical(_socketClient, channel)) {
           return;
         }
         connectionStatus = ConnectionStatus.disconnected;
+        if (kDebugMode) {
+          print('WebSocket: connection error to $uri -> $error');
+        }
         onError?.call(error);
       });
 
@@ -66,6 +75,9 @@ class WebSocketsHandler {
             return;
           }
           connectionStatus = ConnectionStatus.disconnected;
+          if (kDebugMode) {
+            print('WebSocket: stream error from $uri -> $error');
+          }
           onError?.call(error);
         },
         onDone: () {
@@ -73,12 +85,18 @@ class WebSocketsHandler {
             return;
           }
           connectionStatus = ConnectionStatus.disconnected;
+          if (kDebugMode) {
+            print('WebSocket: closed by server ($uri)');
+          }
           onDone?.call();
         },
         cancelOnError: false,
       );
     } catch (e) {
       connectionStatus = ConnectionStatus.disconnected;
+      if (kDebugMode) {
+        print('WebSocket: failed to connect -> $e');
+      }
       onError?.call(e);
     }
   }
